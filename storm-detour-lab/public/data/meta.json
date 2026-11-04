@@ -1,0 +1,25 @@
+{
+  "source": "OurAirports (https://ourairports.com/data/) — Public Domain",
+  "sourceUrl": "data-raw/airports.csv (로컬 사본)",
+  "preparedAt": "2026-11-04T12:44:24.651Z",
+  "totalAirports": 86336,
+  "skippedInvalidCoords": 0,
+  "countries": 249,
+  "typeCounts": {
+    "heliport": 23278,
+    "small_airport": 42783,
+    "closed": 13657,
+    "seaplane_base": 1274,
+    "medium_airport": 4107,
+    "balloonport": 62,
+    "large_airport": 1175
+  },
+  "origin": {
+    "id": 5653,
+    "ident": "RKSI",
+    "iata": "ICN",
+    "name": "Incheon International Airport",
+    "lat": 37.469101,
+    "lon": 126.450996
+  }
+}

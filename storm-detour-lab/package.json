@@ -1,0 +1,35 @@
+{
+  "name": "storm-detour-lab",
+  "version": "0.1.0",
+  "description": "태풍 회피 최단 항로 수학 시뮬레이터 (교육용)",
+  "scripts": {
+    "prepare-airports": "tsx scripts/prepare-airports.ts",
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "geographiclib-geodesic": "^2.2.0",
+    "maplibre-gl": "^6.16.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "topojson-client": "^3.1.0",
+    "world-atlas": "^2.0.2"
+  },
+  "devDependencies": {
+    "@types/geojson": "^7946.0.16",
+    "@types/node": "^26.6.6",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@types/topojson-client": "^3.1.5",
+    "@vitejs/plugin-react": "^4.7.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^5.4.21",
+    "vitest": "^2.1.9"
+  },
+  "private": true,
+  "type": "module"
+}
