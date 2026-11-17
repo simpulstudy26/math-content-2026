@@ -1,241 +1,216 @@
 import { describe, expect, it } from 'vitest';
-import { COSINE_TABLE, lookupCosine } from '../src/math/angleTable';
-import { computeDetourMath, parametrizePath, sampleArc, segmentPointDistance } from '../src/math/detour';
-import { makeFrame, mathToPlane, planeToMath } from '../src/math/frame45';
-import { intersectSegment } from '../src/math/intersections';
-import { checkTangent, tangentPoints } from '../src/math/tangents';
+import { COS_TABLE, MAX_INTERP_ERROR_DEG, interpolateAlpha } from '../src/math/cosTable';
+import { computeDetour, parametrize } from '../src/math/detour';
+import { makeFrame, mathToPlane, planeToMath } from '../src/math/frame';
 
 const close = (a: number, b: number, tol = 1e-6) => expect(Math.abs(a - b)).toBeLessThan(tol);
 
-describe('명세 11장 수치 예제: O=(0,0), A=(6,6), C=(3,3), r=√2', () => {
-  const res = computeDetourMath(6, { x: 3, y: 3 }, Math.SQRT2);
+describe('문서 9~10장 수치 예제: O=(0,0), A=(10,0), C=(4,1), r=2', () => {
+  const res = computeDetour(10, 4, 1, 2);
+  const d = res.detour!;
 
-  it('교점 (2,2), (4,4)', () => {
-    expect(res.check.status).toBe('crossing');
-    close(res.check.uMinus!, 2, 1e-12);
-    close(res.check.uPlus!, 4, 1e-12);
+  it('9-1 교점 B₁=(4−√3,0), B₂=(4+√3,0), 우회 필요', () => {
+    expect(res.status).toBe('crossing');
+    close(res.B1!.x, 2.267949);
+    close(res.B2!.x, 5.732051);
   });
-  it('OP = AQ = 4, CR = 3/2', () => {
-    const c = res.chosen!;
-    close(c.OP, 4, 1e-12);
-    close(c.AQ, 4, 1e-12);
-    close(c.CR!, 1.5, 1e-12);
-    close(c.cosineRatio!, (2 * Math.SQRT2) / 3, 1e-12);
+  it('9-2 b=1>0 → s=−1 (아래쪽), ℓ_O=√13, ℓ_A=√33', () => {
+    expect(d.s).toBe(-1);
+    expect(d.DO).toBe(17);
+    expect(d.DA).toBe(37);
+    close(d.lO, Math.sqrt(13), 1e-12);
+    close(d.lA, Math.sqrt(33), 1e-12);
   });
-  it('α ≈ 19.471221°, 중심각 ≈ 38.942441°', () => {
-    const c = res.chosen!;
-    close(c.alphaDeg, 19.471221, 1e-6);
-    close(c.centralAngleDeg, 38.942441, 1e-6);
-    expect(c.isMajorArc).toBe(false);
+  it('9-3 P≈(3.483006, −0.932024), Q≈(4.338132, −0.971210)', () => {
+    close(d.P.x, 3.483006);
+    close(d.P.y, -0.932024);
+    close(d.Q.x, 4.338132);
+    close(d.Q.y, -0.97121);
   });
-  it('호 ≈ 0.961204, 총거리 ≈ 8.961204, 추가 ≈ 0.475923', () => {
-    close(res.chosen!.arcLength, 0.961204, 1e-6);
-    close(res.totalLength, 8.961204, 1e-6);
-    close(res.directLength, 8.485281, 1e-6);
-    close(res.extraLength, 0.475923, 1e-6);
+  it('10-1 H≈−8.659726, R≈(3.906276, −1.045288), CR≈2.047434', () => {
+    close(d.H, -8.659726);
+    close(d.R.x, 3.906276);
+    close(d.R.y, -1.045288);
+    close(d.dR, 2.047434);
   });
-  it('b = a → 동점, 양쪽 길이 동일', () => {
-    expect(res.tie).toBe(true);
-    close(res.chosen!.totalLength, res.other!.totalLength, 1e-9);
-    expect(res.chosen!.side).not.toBe(res.other!.side);
+  it('10-2 z≈0.976832397, 12°와 13° 사이, α̂≈12.348164°, 2α̂≈24.696329°', () => {
+    close(d.interp.z, 0.976832397, 1e-9);
+    expect(d.interp.lower.deg).toBe(12);
+    expect(d.interp.upper.deg).toBe(13);
+    close(d.interp.m, -0.00377754, 1e-8);
+    close(d.interp.n, 1.02347808, 1e-7);
+    close(d.alphaHat, 12.348164, 1e-5);
+    close(d.centralHat, 24.696329, 1e-5);
+  });
+  it('10-3 호≈0.862064, L_min≈10.212178, 정확값≈10.212810, 차이≈0.000631', () => {
+    close(d.arcHat, 0.862064, 1e-5);
+    close(d.Lmin, 10.212178, 1e-5);
+    close(d.LTrue, 10.21281, 1e-5);
+    close(d.LTrue - d.Lmin, 0.000631, 1e-5);
+    expect(res.straight).toBe(10);
   });
 });
 
-function assertCandidateInvariants(res: ReturnType<typeof computeDetourMath>) {
-  for (const c of [res.chosen!, res.other!]) {
-    expect(c.checks.tangentP.radiusError).toBeLessThan(1e-9);
-    expect(c.checks.tangentQ.radiusError).toBeLessThan(1e-9);
-    expect(c.checks.tangentP.perpendicularityError).toBeLessThan(1e-9);
-    expect(c.checks.tangentQ.perpendicularityError).toBeLessThan(1e-9);
-    expect(c.checks.headingContinuousAtP).toBe(true);
-    expect(c.checks.headingContinuousAtQ).toBe(true);
-    expect(c.checks.arcAvoidsChord).toBe(true);
-    expect(c.checks.angleAgreementDeg).toBeLessThan(1e-6);
-    // P, Q가 같은 쪽
-    expect(Math.sign(c.P.y - c.P.x)).toBe(c.side);
-    expect(Math.sign(c.Q.y - c.Q.x)).toBe(c.side);
-    // 원호 샘플이 원 안으로 들어가지 않음
-    for (const p of sampleArc(c, res.C, res.r, 200)) {
-      expect(Math.hypot(p.x - res.C.x, p.y - res.C.y)).toBeGreaterThan(res.r - 1e-9);
-    }
-    expect(segmentPointDistance({ x: 0, y: 0 }, c.P, res.C)).toBeGreaterThan(res.r - 1e-9);
-    expect(segmentPointDistance(c.Q, res.A, res.C)).toBeGreaterThan(res.r - 1e-9);
+describe('경계 상황 (문서 11장)', () => {
+  it('b² > r² → 만나지 않음, 직선 t', () => {
+    expect(computeDetour(10, 5, 3, 2).status).toBe('miss');
+  });
+  it('b² = r² → 접함, 직선 허용', () => {
+    expect(computeDetour(10, 5, 2, 2).status).toBe('tangent');
+  });
+  it('교점이 선분 밖', () => {
+    expect(computeDetour(10, 12, 0.5, 1).status).toBe('outsideSegment');
+    expect(computeDetour(10, -3, 0.5, 1).status).toBe('outsideSegment');
+  });
+  it('출발점·도착점이 원 안 → 태풍 수정', () => {
+    expect(computeDetour(10, 0.5, 0.2, 1).status).toBe('endpointInside');
+    expect(computeDetour(10, 9.6, -0.2, 1).status).toBe('endpointInside');
+  });
+  it('r ≤ 0', () => {
+    expect(computeDetour(10, 5, 0, 0).status).toBe('invalidRadius');
+  });
+  it('b = 0 → 위쪽(s=+1) 대표 선택, 대칭 표시', () => {
+    const d = computeDetour(10, 5, 0, 2).detour!;
+    expect(d.s).toBe(1);
+    expect(d.symmetric).toBe(true);
+    expect(d.P.y).toBeGreaterThan(0);
+    expect(d.Q.y).toBeGreaterThan(0);
+  });
+  it('b < 0 → 위쪽 우회', () => {
+    const d = computeDetour(10, 5, -1, 2).detour!;
+    expect(d.s).toBe(1);
+    expect(d.P.y).toBeGreaterThan(0);
+  });
+});
+
+describe('무작위 태풍 3000개: 일반식의 성질', () => {
+  let seed = 20261117;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const cases: ReturnType<typeof computeDetour>[] = [];
+  for (let i = 0; i < 40000 && cases.length < 3000; i++) {
+    const t = 1 + rnd() * 30;
+    const res = computeDetour(t, rnd() * t, (rnd() - 0.5) * t, 0.02 + rnd() * t * 0.6);
+    if (res.status === 'crossing') cases.push(res);
   }
-}
 
-describe('우회 방향 (명세 6장)', () => {
-  it('b > a → y<x 쪽(아래)이 짧은 우회', () => {
-    const res = computeDetourMath(6, { x: 2.8, y: 3.3 }, 1.2);
-    expect(res.check.status).toBe('crossing');
-    expect(res.ruleSide).toBe(-1);
-    expect(res.chosen!.side).toBe(-1);
-    expect(res.ruleAgrees).toBe(true);
-    expect(res.chosen!.totalLength).toBeLessThan(res.other!.totalLength);
-    assertCandidateInvariants(res);
-  });
-  it('b < a → y>x 쪽(위)이 짧은 우회', () => {
-    const res = computeDetourMath(6, { x: 3.4, y: 2.9 }, 1.1);
-    expect(res.ruleSide).toBe(1);
-    expect(res.chosen!.side).toBe(1);
-    expect(res.ruleAgrees).toBe(true);
-    assertCandidateInvariants(res);
-  });
-  it('b = a → 동점, 표시 방향만 바꿀 수 있음', () => {
-    const up = computeDetourMath(10, { x: 5, y: 5 }, 2, { tieSide: 1 });
-    const down = computeDetourMath(10, { x: 5, y: 5 }, 2, { tieSide: -1 });
-    expect(up.chosen!.side).toBe(1);
-    expect(down.chosen!.side).toBe(-1);
-    close(up.totalLength, down.totalLength, 1e-9);
-  });
-  it('무작위 유효 태풍 500개에서 b−a 규칙 = 실제 두 후보 비교', () => {
-    let seed = 7;
-    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-    let n = 0;
-    for (let i = 0; i < 4000 && n < 500; i++) {
-      const t = 1 + rnd() * 20;
-      const a = rnd() * t;
-      const b = rnd() * t;
-      const r = 0.05 + rnd() * t * 0.7;
-      const res = computeDetourMath(t, { x: a, y: b }, r);
-      if (res.check.status !== 'crossing') continue;
-      n++;
-      expect(res.ruleAgrees).toBe(true);
-      assertCandidateInvariants(res);
-      expect(res.chosen!.isMajorArc).toBe(false);
+  it('충분한 표본', () => expect(cases.length).toBe(3000));
+
+  it('P, Q는 원 위, 반지름 ⟂ 접선, 같은 쪽(부호 s)', () => {
+    for (const r of cases) {
+      const d = r.detour!;
+      const sc = Math.max(1, r.r);
+      expect(d.checks.PonCircle).toBeLessThan(1e-9 * sc);
+      expect(d.checks.QonCircle).toBeLessThan(1e-9 * sc);
+      expect(Math.abs(d.checks.Pperp)).toBeLessThan(1e-8 * sc * r.t);
+      expect(Math.abs(d.checks.Qperp)).toBeLessThan(1e-8 * sc * r.t);
+      expect(Math.sign(d.P.y)).toBe(d.s);
+      expect(Math.sign(d.Q.y)).toBe(d.s);
+      expect(Math.abs(d.H)).toBeGreaterThan(0);
     }
-    expect(n).toBeGreaterThan(300);
   });
-});
 
-describe('우회가 필요 없는 경우', () => {
-  it('닿지 않음 → 직선, L = t√2', () => {
-    const res = computeDetourMath(6, { x: 1, y: 5 }, 1);
-    expect(res.check.status).toBe('miss');
-    expect(res.detourRequired).toBe(false);
-    close(res.totalLength, 6 * Math.SQRT2);
+  it('R은 두 접선 위, CR > r, 중심각은 작은 호(2α < 180°)', () => {
+    for (const r of cases) {
+      const d = r.detour!;
+      // R이 직선 OP 위: p_y u − p_x v = 0
+      expect(Math.abs(d.P.y * d.R.x - d.P.x * d.R.y)).toBeLessThan(1e-7 * r.t * r.t);
+      expect(Math.abs(d.Q.y * (d.R.x - r.t) - (d.Q.x - r.t) * d.R.y)).toBeLessThan(1e-7 * r.t * r.t);
+      expect(d.dR).toBeGreaterThan(r.r);
+      expect(2 * d.alphaTrue).toBeLessThan(180);
+    }
   });
-  it('접함 → 우회 불필요', () => {
-    // d = |a−b|/√2 = r
-    const res = computeDetourMath(6, { x: 2, y: 4 }, Math.SQRT2);
-    expect(res.check.status).toBe('tangent');
-    expect(res.detourRequired).toBe(false);
-  });
-  it('무한 직선만 교차, 선분 OA 밖 → 우회 불필요', () => {
-    const res = computeDetourMath(6, { x: 10, y: 10 }, 1);
-    expect(res.check.status).toBe('outsideSegment');
-    expect(res.detourRequired).toBe(false);
-    close(res.totalLength, 6 * Math.SQRT2);
-  });
-  it('출발지가 원 안 → 태풍 수정 필요', () => {
-    expect(computeDetourMath(6, { x: 0.5, y: 0.5 }, 1).check.status).toBe('endpointInside');
-    expect(computeDetourMath(6, { x: 6, y: 5.5 }, 1).check.status).toBe('endpointInside');
-  });
-  it('반지름 0 이하', () => {
-    expect(intersectSegment(6, 3, 3, 0).status).toBe('invalidRadius');
-  });
-});
 
-describe('중심이 제2~4사분면에 있어도 동작', () => {
-  it('a < 0 인 태풍 (선분 OA 근처는 아니지만 수식이 0으로 나누지 않음)', () => {
-    const res = computeDetourMath(6, { x: -2, y: 1 }, 0.5);
-    expect(res.check.status).toBe('miss');
-    expect(Number.isFinite(res.check.lineDistance)).toBe(true);
+  it('보간 오차 0 ≤ α − α̂ < 0.25°, |ΔL| < πr/360', () => {
+    for (const r of cases) {
+      const d = r.detour!;
+      expect(d.interpErrorDeg).toBeGreaterThan(-1e-9);
+      expect(d.interpErrorDeg).toBeLessThan(MAX_INTERP_ERROR_DEG);
+      expect(d.interpErrorLen).toBeLessThan(d.interpErrorBound + 1e-12);
+      expect(d.LTrue).toBeGreaterThanOrEqual(d.Lmin - 1e-9);
+      // 실제 우회 거리는 항상 직선보다 길다. 근삿값은 아주 얕은 관통에서 직선보다 작아질 수 있다.
+      expect(d.LTrue).toBeGreaterThan(r.t);
+      expect(d.approxBelowStraight).toBe(d.Lmin <= r.t);
+      if (d.approxBelowStraight) expect(d.LTrue - r.t).toBeLessThan(d.interpErrorBound);
+    }
   });
-  it('a < 0, b > 0 이고 선분을 가로지르는 큰 원', () => {
-    // C=(−0.5, 1.5): d = 2/√2 = √2, r = 2 → 교차, |OC|² = 2.5 < 4 → 출발지가 원 안
-    expect(computeDetourMath(6, { x: -0.5, y: 1.5 }, 2).check.status).toBe('endpointInside');
-    // 출발지를 벗어나는 예: C = (1.2, 3.2), r = 1.6
-    const ok = computeDetourMath(6, { x: 1.2, y: 3.2 }, 1.6);
-    expect(ok.check.status).toBe('crossing');
-    assertCandidateInvariants(ok);
+
+  it('문서 2-4: 반대쪽(중심이 있는 쪽)으로 돌면 원호가 더 길다', () => {
+    // 같은 일반식에 부호만 −s 로 바꿔 반대쪽 접점을 구하고, 반대 방향으로 도는 원호 길이를 잰다.
+    const arcFor = (t: number, a: number, b: number, r: number, s: 1 | -1) => {
+      const DO = a * a + b * b;
+      const lO = Math.sqrt(DO - r * r);
+      const DA = (t - a) ** 2 + b * b;
+      const lA = Math.sqrt(DA - r * r);
+      const P = { x: (a * lO * lO - s * b * r * lO) / DO, y: (b * lO * lO + s * a * r * lO) / DO };
+      const Q = { x: a + ((t - a) * r * r + s * b * r * lA) / DA, y: b + (-b * r * r + s * (t - a) * r * lA) / DA };
+      const dir = s === -1 ? 1 : -1;
+      let sw = dir * (Math.atan2(Q.y - b, Q.x - a) - Math.atan2(P.y - b, P.x - a));
+      sw = ((sw % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+      return { arc: r * sw, tangents: lO + lA };
+    };
+    for (const r of cases.slice(0, 1000)) {
+      const d = r.detour!;
+      const mine = arcFor(r.t, r.a, r.b, r.r, d.s);
+      const other = arcFor(r.t, r.a, r.b, r.r, d.s === 1 ? -1 : 1);
+      close(mine.arc, d.arcTrue, 1e-9 * Math.max(1, r.r));
+      close(mine.tangents, other.tangents, 1e-9 * r.t); // 접선 길이 합은 같다
+      if (r.b === 0) close(mine.arc, other.arc, 1e-9 * Math.max(1, r.r));
+      else expect(other.arc).toBeGreaterThan(mine.arc);
+    }
   });
-  it('접점 공식: 음수 좌표 중심에서도 |T−C| = r, 반지름 ⟂ 접선', () => {
-    const C = { x: -3, y: -1 };
-    const S = { x: 2, y: 4 };
-    const tp = tangentPoints(S, C, 1.7);
-    for (const T of [tp.plus, tp.minus]) {
-      const ck = checkTangent(T, S, C, 1.7);
-      expect(ck.radiusError).toBeLessThan(1e-12);
-      expect(ck.perpendicularityError).toBeLessThan(1e-12);
+
+  it('경로 매개화: 끝점 A, 경로가 원 안으로 들어가지 않음', () => {
+    for (const r of cases.slice(0, 300)) {
+      const p = parametrize(r);
+      const end = p.at(p.total).p;
+      expect(Math.abs(end.x - r.t)).toBeLessThan(1e-7 * r.t);
+      expect(Math.abs(end.y)).toBeLessThan(1e-7 * r.t);
+      for (let i = 0; i <= 200; i++) {
+        const q = p.at((p.total * i) / 200).p;
+        expect(Math.hypot(q.x - r.a, q.y - r.b)).toBeGreaterThan(r.r * (1 - 1e-9));
+      }
     }
   });
 });
 
-describe('180°보다 긴 반대편 원호 (명세 6장 보정)', () => {
-  // A=(6,6), C=(2,4), r=4.4: 짧은 쪽(아래) ≈ 122.5°, 반대쪽(위) ≈ 196.3°
-  const res = computeDetourMath(6, { x: 2, y: 4 }, 4.4);
-  it('선택된 짧은 쪽은 작은 호, 중심각 = 2α', () => {
-    expect(res.check.status).toBe('crossing');
-    expect(res.chosen!.side).toBe(-1);
-    expect(res.chosen!.isMajorArc).toBe(false);
-    close(res.chosen!.centralAngleDeg, 2 * res.chosen!.alphaDeg, 1e-12);
+describe('코사인표', () => {
+  it('0°~90°, 소수 8자리, 감소', () => {
+    expect(COS_TABLE).toHaveLength(91);
+    expect(COS_TABLE[12].cos).toBe(0.9781476);
+    expect(COS_TABLE[13].cos).toBe(0.97437006);
+    expect(COS_TABLE[60].cos).toBe(0.5);
+    for (let i = 1; i <= 90; i++) expect(COS_TABLE[i].cos).toBeLessThan(COS_TABLE[i - 1].cos);
   });
-  it('반대쪽은 큰 호, 중심각 = 360° − 2α′ (2α′로 오인하지 않음)', () => {
-    const o = res.other!;
-    expect(o.isMajorArc).toBe(true);
-    expect(o.centralAngleDeg).toBeGreaterThan(180);
-    close(o.centralAngleDeg, 360 - 2 * o.alphaDeg, 1e-9);
-    close(o.centralAngleDeg, o.sweepDeg, 1e-6);
-    expect(o.smallAngleDeg).toBeLessThan(180);
-    assertCandidateInvariants(res);
+  it('표 값과 정확히 같으면 보간 없이 그 각', () => {
+    const it0 = interpolateAlpha(0.5);
+    expect(it0.exactHit).toBe(true);
+    expect(it0.alphaHat).toBe(60);
   });
-});
-
-describe('코사인표 역조회 (acos 미사용)', () => {
-  it('표: 0°~90°, cos 감소', () => {
-    expect(COSINE_TABLE.length).toBe(91);
-    expect(COSINE_TABLE[0].cos).toBe(1);
-    expect(COSINE_TABLE[60].cos).toBe(0.5);
-    for (let i = 1; i <= 90; i++) expect(COSINE_TABLE[i].cos).toBeLessThanOrEqual(COSINE_TABLE[i - 1].cos);
-  });
-  it('cos α = 0.5 → 60°, 표의 끼는 행·선형보간', () => {
-    const lk = lookupCosine(0.5);
-    close(lk.alphaDeg, 60, 1e-8);
-    const lk2 = lookupCosine((2 * Math.SQRT2) / 3);
-    expect(lk2.lower.deg).toBe(19);
-    expect(lk2.upper.deg).toBe(20);
-    close(lk2.interpolatedDeg, 19.47, 0.01);
+  it('최대 보간 오차는 0°~1° 구간에서 약 0.249995°', () => {
+    let worst = 0;
+    for (let k = 0; k <= 1000; k++) {
+      const alpha = (k / 1000) * 1;
+      const z = Math.cos((alpha * Math.PI) / 180);
+      worst = Math.max(worst, alpha - interpolateAlpha(z).alphaHat);
+    }
+    close(worst, 0.249995, 2e-4);
   });
 });
 
-describe('45° 좌표계 회전', () => {
-  it('임의의 방향의 목적지 → 항상 A=(t,t), t>0, 거리·직교성 보존', () => {
-    let seed = 11;
+describe('계산 좌표계: 목적지가 항상 (t, 0)', () => {
+  it('임의 방향 300개', () => {
+    let seed = 5;
     const rnd = () => ((seed = (seed * 48271) % 2147483647) / 2147483647);
     for (let i = 0; i < 300; i++) {
       const A0 = { x: (rnd() - 0.5) * 30000, y: (rnd() - 0.5) * 30000 };
       const f = makeFrame(A0);
       const A = planeToMath(f, A0);
       close(A.x, f.t, 1e-6);
-      close(A.y, f.t, 1e-6);
-      expect(f.t).toBeGreaterThan(0);
-      close(f.e.x * f.n.x + f.e.y * f.n.y, 0, 1e-12);
+      close(A.y, 0, 1e-6);
       const P0 = { x: (rnd() - 0.5) * 9000, y: (rnd() - 0.5) * 9000 };
-      const Q0 = { x: (rnd() - 0.5) * 9000, y: (rnd() - 0.5) * 9000 };
-      const P = planeToMath(f, P0);
-      const Q = planeToMath(f, Q0);
-      close(Math.hypot(P.x - Q.x, P.y - Q.y), Math.hypot(P0.x - Q0.x, P0.y - Q0.y), 1e-6);
-      const back = mathToPlane(f, P);
+      const back = mathToPlane(f, planeToMath(f, P0));
       close(back.x, P0.x, 1e-7);
       close(back.y, P0.y, 1e-7);
     }
-  });
-  it('목적지가 원점과 같으면 오류', () => {
-    expect(() => makeFrame({ x: 0, y: 0 })).toThrow();
-  });
-});
-
-describe('비행 경로 매개화', () => {
-  it('누적 길이 = 총거리, 원호 구간 샘플이 원 밖', () => {
-    const res = computeDetourMath(6, { x: 3.2, y: 2.7 }, 1.3);
-    const p = parametrizePath(res);
-    close(p.total, res.totalLength, 1e-9);
-    for (let i = 0; i <= 1000; i++) {
-      const q = p.at((p.total * i) / 1000);
-      expect(Math.hypot(q.p.x - res.C.x, q.p.y - res.C.y)).toBeGreaterThan(res.r - 1e-9);
-    }
-    const end = p.at(p.total).p;
-    close(end.x, 6, 1e-9);
-    close(end.y, 6, 1e-9);
   });
 });

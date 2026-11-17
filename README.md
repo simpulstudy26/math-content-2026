@@ -5,7 +5,7 @@ GitHub Pages에 자동 배포합니다.
 
 | 콘텐츠 | 폴더 | 주소 |
 |---|---|---|
-| 태풍 회피 최단 항로 | [`storm-detour-lab/`](storm-detour-lab/) | https://simpulstudy26.github.io/math-content-2026/storm-detour-lab/ |
+| 태풍을 지나는 여행 (최단 항로 수학 비행) | [`storm-detour-lab/`](storm-detour-lab/) | https://simpulstudy26.github.io/math-content-2026/storm-detour-lab/ |
 
 ## 새 콘텐츠 추가하기
 
