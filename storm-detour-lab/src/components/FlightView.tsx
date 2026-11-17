@@ -7,11 +7,13 @@ import { Radar } from './Radar';
 import { NoteBody } from './NoteBody';
 import { Postcard } from './Postcard';
 import { num } from '../format';
+import type { Ticket } from './BookingFlow';
 
 interface Props {
   trip: Trip;
   destLabel: string;
   destCode: string;
+  ticket: Ticket | null;
   ambient: Ambient;
   onExit: () => void;
 }
@@ -23,7 +25,7 @@ const smooth = (e0: number, e1: number, x: number) => {
 };
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
-export function FlightView({ trip, destLabel, destCode, ambient, onExit }: Props) {
+export function FlightView({ trip, destLabel, destCode, ticket, ambient, onExit }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<FlightScene | null>(null);
   const timeline = useMemo(() => makeTimeline(trip, 240), [trip]);
@@ -64,7 +66,6 @@ export function FlightView({ trip, destLabel, destCode, ambient, onExit }: Props
 
   useEffect(() => {
     if (visible.length > seenCount.current) {
-      ambient.chime(visible[visible.length - 1].kind === 'story');
       seenCount.current = visible.length;
       setExpanded(null);
       requestAnimationFrame(() => notesBox.current?.scrollTo({ top: notesBox.current.scrollHeight, behavior: 'smooth' }));
@@ -108,7 +109,28 @@ export function FlightView({ trip, destLabel, destCode, ambient, onExit }: Props
             <span>인천</span>
             <span>{destLabel}</span>
           </div>
-          <div className="route-phase">{st ? PHASE_TEXT[st.phase] : '탑승 완료'}</div>
+          {ticket && (
+            <div className="route-ticket">
+              <span>SIMPUL AIR {ticket.flightNo}</span>
+              <span>좌석 {ticket.seat}</span>
+              <span>{ticket.passenger}</span>
+            </div>
+          )}
+          <div className="route-phase">
+            {!st
+              ? '탑승 완료'
+              : st.distance < 2.6
+                ? '활주로에서 이륙 활주 중'
+                : st.altitude < 3 && st.distance < trip.path.total / 2
+                  ? '이륙, 순항 고도로 상승 중'
+                  : trip.path.total - st.distance < 2
+                    ? st.done
+                      ? '착륙 완료 — 여행을 마쳤어요'
+                      : '착륙, 활주로에서 감속 중'
+                    : trip.path.total - st.distance < 160
+                      ? '목적지 공항으로 하강 중'
+                      : PHASE_TEXT[st.phase]}
+          </div>
         </div>
         <div className="hud-btns">
           <button
@@ -218,7 +240,7 @@ export function FlightView({ trip, destLabel, destCode, ambient, onExit }: Props
 
       <div className={`intro ${time > 3 ? 'gone' : ''}`}>
         <div>
-          <small>BOARDING COMPLETE</small>
+          <small>{ticket ? `${ticket.flightNo} · SEAT ${ticket.seat} · ` : ''}BOARDING COMPLETE</small>
           <h2>{destLabel}</h2>
           <p>인천을 떠나 {num(trip.t, 0)} km의 여행. 창밖을 즐기는 동안 기내 노트에 최단 항로 계산이 하나씩 적혀요.</p>
         </div>

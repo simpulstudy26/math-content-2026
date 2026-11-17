@@ -96,7 +96,7 @@ export class CloudLayer {
   private data: Float32Array;
   private order: number[];
   private depth: Float32Array;
-  readonly uniforms: { uSpin: { value: number }; uOpacity: { value: number } };
+  readonly uniforms: { uSpin: { value: number }; uOpacity: { value: number }; uFlash: { value: number }; uFlashSeed: { value: number } };
   private frame = 0;
 
   constructor(
@@ -119,7 +119,7 @@ export class CloudLayer {
     this.geo = geo;
     this.order = puffs.map((_, i) => i);
     this.depth = new Float32Array(puffs.length);
-    this.uniforms = { uSpin: { value: 0 }, uOpacity: { value: 1 } };
+    this.uniforms = { uSpin: { value: 0 }, uOpacity: { value: 1 }, uFlash: { value: 0 }, uFlashSeed: { value: 0 } };
     const mat = new THREE.ShaderMaterial({
       transparent: true,
       depthWrite: false,
@@ -134,6 +134,7 @@ export class CloudLayer {
         varying float vDist;
         varying float vSize;
         varying vec3 vCenter;
+        varying float vRand;
         #include <common>
         #include <logdepthbuf_pars_vertex>
         void main() {
@@ -152,18 +153,20 @@ export class CloudLayer {
           vDist = length(cw.xyz);
           vSize = iData.x;
           vCenter = cw.xyz;
+          vRand = fract(sin(dot(iOffset.xy, vec2(12.9898, 78.233))) * 43758.5453);
           #include <logdepthbuf_vertex>
         }
       `,
       fragmentShader: /* glsl */ `
         uniform sampler2D atlas;
-        uniform vec3 sunDir; uniform vec3 sunColor; uniform vec3 ambient; uniform vec3 haze; uniform float hazeDist; uniform float uOpacity; uniform vec3 upDir;
-        varying vec2 vUv; varying vec2 vQuad; varying float vShade; varying float vDist; varying float vSize; varying vec3 vCenter;
+        uniform vec3 sunDir; uniform vec3 sunColor; uniform vec3 ambient; uniform vec3 haze; uniform float hazeDist; uniform float uOpacity; uniform vec3 upDir; uniform float uFlash; uniform float uFlashSeed;
+        varying vec2 vUv; varying vec2 vQuad; varying float vShade; varying float vDist; varying float vSize; varying vec3 vCenter; varying float vRand;
         #include <common>
         #include <logdepthbuf_pars_fragment>
         void main() {
           #include <logdepthbuf_fragment>
-          float dens = texture2D(atlas, vUv).r;
+          // 아틀라스 타일 경계(밉맵 번짐)가 사각형으로 드러나지 않도록 원형으로 한 번 더 감쇠
+          float dens = texture2D(atlas, vUv).r * (1.0 - smoothstep(0.62, 0.98, length(vQuad)));
           if (dens < 0.02) discard;
           // 공 모양 가짜 법선 (뷰 공간) → 세계 공간
           vec2 p = vQuad;
@@ -177,6 +180,9 @@ export class CloudLayer {
           vec3 col = ambient * (0.55 + 0.3 * dot(nW, upDir)) * vShade
                    + sunColor * diff * 0.62 * vShade
                    + sunColor * fwd * edge * 0.9;
+          // 번개: 한 번에 일부 퍼프만 안쪽에서 번쩍
+          float bolt = step(0.86, fract(vRand + uFlashSeed));
+          col += vec3(0.78, 0.84, 1.0) * uFlash * bolt * (0.6 + 1.6 * dens);
           float T = exp(-vDist / (hazeDist * 3.0)); // 구름은 높이 떠 있어 공기가 맑다
           col = col * T + haze * (1.0 - T);
           float nearFade = smoothstep(0.35, 1.1, vDist / vSize);

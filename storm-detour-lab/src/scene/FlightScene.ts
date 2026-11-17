@@ -8,15 +8,15 @@
  *  ③ 비행기(m): 깊이를 비우고 조종사 어깨 뒤 카메라로 비행기를 그린다 (그림자·하늘 반사 포함)
  */
 import * as THREE from 'three';
-import type { Timeline, Trip } from '../math/trip';
+import { altitudeAtDistance, type Timeline, type Trip } from '../math/trip';
 import type { Phase } from '../math/detour';
 import { ecef, lightingUniforms, makeEarth } from './globe';
 import { Atmosphere } from './atmosphere';
 import { makeRouteClouds, makeStorm, type Storm } from './clouds';
-import { buildAircraft, type Aircraft } from './aircraft';
+import { buildAirliner, GEAR_HEIGHT, type Airliner } from './airliner';
+import { AIRPORT_LIFT_KM, airportSpecs, makeAirport } from './airport';
 import type { CloudLayer } from './cloudSprites';
 
-export const CRUISE_ALT_KM = 5;
 
 export interface FlightState {
   time: number;
@@ -36,9 +36,9 @@ const smooth = (e0: number, e1: number, x: number) => {
   return u * u * (3 - 2 * u);
 };
 
-/** 조종석 뒤 오른쪽 위, 어깨 너머로 기체가 살짝 보이는 자리 (비행기 좌표, m) */
-const CAM_OFFSET = new THREE.Vector3(1.6, 2.5, 6.6);
-const CAM_TARGET = new THREE.Vector3(-0.2, 0.1, -24);
+/** 오른쪽 날개 뒤 위에서 기체를 어깨 너머로 보는 자리 (비행기 좌표, m) */
+const CAM_OFFSET = new THREE.Vector3(13, 7.5, 47);
+const CAM_TARGET = new THREE.Vector3(-3, 0.5, -70);
 const X_AXIS = new THREE.Vector3(1, 0, 0);
 
 export class FlightScene {
@@ -52,8 +52,11 @@ export class FlightScene {
   private routeClouds: CloudLayer;
   private storm: Storm;
   private planeScene = new THREE.Scene();
-  private planeCam = new THREE.PerspectiveCamera(52, 1, 0.05, 400);
-  private aircraft: Aircraft;
+  private planeCam = new THREE.PerspectiveCamera(52, 1, 0.5, 5000);
+  private aircraft: Airliner;
+  private shadowBlob: THREE.Mesh;
+  private worldSun = new THREE.DirectionalLight('#ffffff', 1.6);
+  private worldHemi = new THREE.HemisphereLight('#ffffff', '#887766', 0.6);
   private sunLight = new THREE.DirectionalLight('#ffffff', 1.6);
   private hemi = new THREE.HemisphereLight('#ffffff', '#887766', 0.45);
   private pmrem: THREE.PMREMGenerator;
@@ -98,15 +101,33 @@ export class FlightScene {
     this.storm = makeStorm(trip, seed, this.light);
     this.world.add(this.storm.group);
 
-    this.aircraft = buildAircraft();
+    const ap = airportSpecs(trip);
+    this.world.add(makeAirport(trip, ap.origin), makeAirport(trip, ap.dest));
+    this.scene.add(this.worldSun, this.worldSun.target, this.worldHemi);
+    this.scene.fog = new THREE.FogExp2('#cccccc', 0.004);
+
+    this.aircraft = buildAirliner();
     this.planeScene.add(this.aircraft.group);
+    // 땅에 가까울 때 비행기 그림자 (부드러운 원)
+    const sc2 = document.createElement('canvas');
+    sc2.width = sc2.height = 128;
+    const g2 = sc2.getContext('2d')!;
+    const gr = g2.createRadialGradient(64, 64, 8, 64, 64, 64);
+    gr.addColorStop(0, 'rgba(0,0,0,0.55)');
+    gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g2.fillStyle = gr;
+    g2.fillRect(0, 0, 128, 128);
+    const blobGeo = new THREE.PlaneGeometry(40, 34);
+    blobGeo.rotateX(-Math.PI / 2);
+    this.shadowBlob = new THREE.Mesh(blobGeo, new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(sc2), transparent: true, depthWrite: false }));
+    this.planeScene.add(this.shadowBlob);
     this.sunLight.castShadow = true;
     this.sunLight.shadow.mapSize.set(2048, 2048);
     const sc = this.sunLight.shadow.camera;
-    sc.left = sc.bottom = -7;
-    sc.right = sc.top = 7;
-    sc.near = 0.5;
-    sc.far = 60;
+    sc.left = sc.bottom = -26;
+    sc.right = sc.top = 26;
+    sc.near = 1;
+    sc.far = 260;
     this.sunLight.shadow.bias = -0.0004;
     this.sunLight.shadow.normalBias = 0.03;
     this.planeScene.add(this.sunLight, this.sunLight.target, this.hemi);
@@ -202,9 +223,9 @@ export class FlightScene {
     }
   }
 
+  /** 지면 위 고도 (km) */
   private altitudeAt(sec: number) {
-    const D = this.timeline.duration;
-    return 0.4 + (CRUISE_ALT_KM - 0.4) * smooth(0, D * 0.07, sec) - (CRUISE_ALT_KM - 0.7) * smooth(D * 0.9, D, sec);
+    return altitudeAtDistance(this.timeline.distanceAt(sec), this.trip.path.total);
   }
 
   private loop(now: number) {
@@ -251,7 +272,10 @@ export class FlightScene {
     const D = this.timeline.duration;
     const s = this.timeline.distanceAt(sec);
     const here = trip.path.at(s);
-    const alt = this.altitudeAt(sec);
+    const total = trip.path.total;
+    const agl = altitudeAtDistance(s, total);
+    // 렌더 고도 = 지면 위 고도 + 공항 지면 높이 + 바퀴 높이 (비행기 원점은 동체 축)
+    const alt = agl + AIRPORT_LIFT_KM + GEAR_HEIGHT / 1000;
     const g = trip.toGeo(here.p);
     ecef(g.lat, g.lon, alt, V.pos);
     const g2 = trip.toGeo({ x: here.p.x + here.dir.x * 2, y: here.p.y + here.dir.y * 2 });
@@ -265,8 +289,10 @@ export class FlightScene {
     V.qFrame.setFromRotationMatrix(V.m);
     V.qFrameInv.copy(V.qFrame).invert();
 
-    // 상승·하강 자세
-    const pitch = 0.09 * (smooth(0, D * 0.01, sec) - smooth(D * 0.05, D * 0.075, sec)) - 0.05 * (smooth(D * 0.9, D * 0.92, sec) - smooth(D * 0.985, D, sec));
+    // 자세: 고도 경사에서 + 이륙 때 기수 들기
+    const slope = (altitudeAtDistance(s + 0.6, total) - altitudeAtDistance(Math.max(0, s - 0.6), total)) / 1.2;
+    const airborne = agl > 0.0005;
+    const pitch = Math.max(-0.09, Math.min(0.16, Math.atan(slope))) + (airborne ? 0.035 : 0) + 0.07 * smooth(2.2, 2.6, s) * (1 - smooth(3.5, 6, s));
     V.qFrameP.copy(V.qFrame).multiply(V.qTmp.setFromAxisAngle(X_AXIS, pitch));
 
     // 원호 구간: 선회 방향으로 기울이고, 카메라는 태풍 쪽을 바라보도록 살짝 돈다
@@ -275,13 +301,20 @@ export class FlightScene {
     // 시간의 함수로 정해 두어 구간을 건너뛰어도 자세가 바로 맞는다
     const { P: tP, Q: tQ } = this.timeline.marks;
     this.bank = turn * 0.3 * smooth(tP - 2.5, tP + 2.5, sec) * (1 - smooth(tQ - 2.5, tQ + 2.5, sec));
-    const yaw = turn * 0.42 * smooth(tP - D * 0.1, tP, sec) * (1 - smooth(tQ, tQ + D * 0.06, sec));
+    const yaw = turn * 0.42 * smooth(tP - D * 0.15, tP - D * 0.02, sec) * (1 - smooth(tQ, tQ + D * 0.06, sec));
     const t = this.clock;
 
     // 비행기 (프레임 공간): 기울기 + 잔잔한 흔들림
-    this.aircraft.group.rotation.set(0.012 * Math.sin(t * 0.53), 0, this.bank + 0.018 * Math.sin(t * 0.71) + 0.008 * Math.sin(t * 1.9));
-    this.aircraft.group.position.y = 0.05 * Math.sin(t * 1.1);
-    this.aircraft.update(t, dt);
+    const sway = smooth(0.02, 0.4, agl);
+    this.aircraft.group.rotation.set(0.006 * Math.sin(t * 0.53) * sway, 0, this.bank + (0.012 * Math.sin(t * 0.71) + 0.005 * Math.sin(t * 1.9)) * sway);
+    this.aircraft.group.position.y = 0.15 * Math.sin(t * 1.1) * sway;
+    // 바퀴: 이륙 후 접고, 착륙 18 km 전에 내린다
+    const gear = s < total / 2 ? 1 - smooth(0.15, 0.45, agl) : smooth(30, 18, total - s);
+    this.aircraft.update(t, dt, gear);
+    const aglM = agl * 1000;
+    this.shadowBlob.position.set(0, -(aglM + GEAR_HEIGHT) + 0.05, 0);
+    (this.shadowBlob.material as THREE.MeshBasicMaterial).opacity = 1 - smooth(0, 120, aglM);
+    this.shadowBlob.visible = aglM < 120;
     // 카메라: 기울기의 일부만 따라가 지평선이 기울어지는 것이 느껴지게
     V.e.set(0, yaw, this.bank * 0.7, 'ZYX');
     V.qRig.setFromEuler(V.e);
@@ -291,7 +324,9 @@ export class FlightScene {
     // 세계 카메라 = 프레임 × 카메라 자세. 위치는 원점이고 세계를 반대로 옮긴다
     this.camera.quaternion.copy(V.qFrameP).multiply(this.planeCam.quaternion);
     this.camera.position.set(0, 0, 0);
-    this.world.position.copy(V.pos).negate();
+    // 세계 카메라도 비행기 카메라와 같은 자리(어깨 너머, m → km)에 두어야 땅 가까이에서 어긋나지 않는다
+    V.ahead.copy(this.planeCam.position).applyQuaternion(V.qFrameP).multiplyScalar(0.001);
+    this.world.position.copy(V.pos).add(V.ahead).negate();
     // 하늘 카메라: 국소 좌표계(위 = Y)
     this.skyCam.quaternion.copy(V.qFrameInv).multiply(this.camera.quaternion);
 
@@ -301,7 +336,7 @@ export class FlightScene {
     V.base.addScaledVector(V.up, -V.base.dot(V.up)).normalize();
     V.baseRight.crossVectors(V.base, V.up).normalize();
     const u = sec / D;
-    const elDeg = 30 - 28.2 * Math.pow(u, 1.3);
+    const elDeg = 30 - 24 * Math.pow(u, 1.3);
     const az = ((34 - 16 * u) * Math.PI) / 180;
     const el = (elDeg * Math.PI) / 180;
     V.sun
@@ -319,7 +354,13 @@ export class FlightScene {
     this.light.sunColor.value.copy(L.sun);
     this.light.ambient.value.copy(L.ambient);
     this.light.haze.value.copy(L.haze);
-    this.light.hazeDist.value = (80 + 30 * alt) * (0.75 + 0.25 * Math.min(1, elDeg / 15));
+    this.light.hazeDist.value = (60 + 18 * alt) * (0.75 + 0.25 * Math.min(1, elDeg / 15));
+    (this.scene.fog as THREE.FogExp2).color.copy(L.haze);
+    (this.scene.fog as THREE.FogExp2).density = 1 / (this.light.hazeDist.value * 1.6);
+    this.worldSun.position.copy(V.sun).multiplyScalar(100);
+    this.worldSun.color.copy(L.sun);
+    this.worldHemi.color.copy(L.ambient);
+    this.worldHemi.groundColor.copy(L.haze).multiplyScalar(0.4);
     this.light.time.value = t;
 
     // 비행기 조명: 햇빛을 프레임 공간으로

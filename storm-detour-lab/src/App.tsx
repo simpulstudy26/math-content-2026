@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Booking, type Storm } from './components/Booking';
+import { BookingFlow, type Storm, type Ticket } from './components/BookingFlow';
+import { AirportIntro } from './components/AirportIntro';
 import { FlightView } from './components/FlightView';
 import { koreanCountryName } from './components/CountryAirportSearch';
 import { unpack, type Airport, type CountryEntry, type DataMeta, type PackedAirport } from './data/airportTypes';
@@ -26,8 +27,9 @@ export default function App() {
   const cache = useRef(new Map<string, Airport[]>());
   const [dest, setDest] = useState<Airport | null>(null);
   const [storm, setStorm] = useState<Storm | null>(null);
-  const [placing, setPlacing] = useState(false);
-  const [screen, setScreen] = useState<'booking' | 'flight'>('booking');
+  const [screen, setScreen] = useState<'intro' | 'booking' | 'flight'>('intro');
+  const [ticket, setTicket] = useState<Ticket | null>(null);
+  const [bookingKey, setBookingKey] = useState(0);
   const [aboutOpen, setAboutOpen] = useState(false);
   const ambient = useRef(new Ambient()).current;
 
@@ -66,7 +68,6 @@ export default function App() {
   const chooseDest = useCallback((a: Airport) => {
     setDest(a);
     setStorm(suggestStorm({ lat: a.lat, lon: a.lon }, 1));
-    setPlacing(false);
   }, []);
 
   const { trip, tripError } = useMemo((): { trip: Trip | null; tripError: string | null } => {
@@ -83,8 +84,10 @@ export default function App() {
 
   return (
     <div className="app">
-      {screen === 'booking' ? (
-        <Booking
+      {screen === 'intro' && <AirportIntro onDone={() => setScreen('booking')} />}
+      {screen === 'booking' && (
+        <BookingFlow
+          key={bookingKey}
           countries={countries}
           loadError={loadError}
           country={country}
@@ -98,13 +101,12 @@ export default function App() {
           onSuggest={(side) => dest && setStorm(suggestStorm({ lat: dest.lat, lon: dest.lon }, side))}
           trip={trip}
           tripError={tripError}
-          placing={placing}
-          onPlacing={setPlacing}
-          onBoard={() => {
+          onBoard={(tk) => {
+            setTicket(tk);
             ambient.start();
             setScreen('flight');
           }}
-          demos={DEMOS.map((d) => ({
+          popular={DEMOS.map((d) => ({
             label: d.label,
             run: async () => {
               await chooseCountry(d.cc);
@@ -114,19 +116,20 @@ export default function App() {
           }))}
           onAbout={() => setAboutOpen(true)}
         />
-      ) : (
-        trip && (
-          <FlightView
-            trip={trip}
-            destLabel={`${destLabel}${dest ? ` (${koreanCountryName(dest.country, dest.country)})` : ''}`}
-            destCode={destCode}
-            ambient={ambient}
-            onExit={() => {
-              ambient.suspend();
-              setScreen('booking');
-            }}
-          />
-        )
+      )}
+      {screen === 'flight' && trip && (
+        <FlightView
+          trip={trip}
+          destLabel={`${destLabel}${dest ? ` (${koreanCountryName(dest.country, dest.country)})` : ''}`}
+          destCode={destCode}
+          ticket={ticket}
+          ambient={ambient}
+          onExit={() => {
+            ambient.suspend();
+            setBookingKey((k) => k + 1);
+            setScreen('booking');
+          }}
+        />
       )}
 
       {aboutOpen && (

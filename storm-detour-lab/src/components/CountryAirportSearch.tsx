@@ -49,7 +49,7 @@ function VirtualList<T>({
   return (
     <div
       ref={ref}
-      className="vlist"
+      className="vscroll"
       style={{ height: Math.min(height, Math.max(rowHeight, items.length * rowHeight)) }}
       onScroll={(e) => setTop((e.target as HTMLDivElement).scrollTop)}
     >

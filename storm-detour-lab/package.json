@@ -1,6 +1,6 @@
 {
   "name": "storm-detour-lab",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "태풍을 지나는 여행 — 1인칭 비행 속 최단 항로 수학 (A=(t,0) 기준)",
   "scripts": {
     "prepare-airports": "tsx scripts/prepare-airports.ts",
@@ -13,6 +13,7 @@
   "dependencies": {
     "d3-geo": "^3.1.2",
     "geographiclib-geodesic": "^2.2.0",
+    "katex": "^0.16.11",
     "maplibre-gl": "^6.16.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -23,6 +24,7 @@
   "devDependencies": {
     "@types/d3-geo": "^3.1.1",
     "@types/geojson": "^7946.0.16",
+    "@types/katex": "^0.16.7",
     "@types/node": "^26.6.6",
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",

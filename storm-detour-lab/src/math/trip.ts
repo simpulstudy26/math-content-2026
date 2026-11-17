@@ -206,6 +206,28 @@ function monotoneCubic(xs: number[], ys: number[], endSlopes: [number, number]) 
   };
 }
 
+/** 이륙 활주 거리 (km) */
+export const RUNWAY_ROLL_KM = 2.6;
+/** 접지 후 정지까지 (km) */
+export const LANDING_ROLL_KM = 1.8;
+/** 순항 고도 (km) */
+export const CRUISE_ALT_KM = 10;
+
+/**
+ * 고도(km)를 누적 거리로 정한다: 활주 → 이륙 후 상승 → 순항 → 하강 → 접지.
+ * 실제 비행의 상승·하강 경사(수 도)에 가깝게.
+ */
+export function altitudeAtDistance(s: number, total: number): number {
+  const up = s <= RUNWAY_ROLL_KM ? 0 : CRUISE_ALT_KM * (1 - Math.exp(-(s - RUNWAY_ROLL_KM) / 55)) * smoothUnit((s - RUNWAY_ROLL_KM) / 2.5);
+  const dEnd = total - s - LANDING_ROLL_KM;
+  const down = dEnd <= 0 ? 0 : CRUISE_ALT_KM * (1 - Math.exp(-dEnd / 75)) * smoothUnit(dEnd / 1.5);
+  return Math.max(0, Math.min(up, down, CRUISE_ALT_KM));
+}
+function smoothUnit(u: number) {
+  const x = Math.min(1, Math.max(0, u));
+  return x * x * (3 - 2 * x);
+}
+
 export function makeTimeline(trip: Trip, duration = 240): Timeline {
   const pcs = trip.path.pieces;
   const total = trip.path.total;
@@ -214,12 +236,18 @@ export function makeTimeline(trip: Trip, duration = 240): Timeline {
     return { duration, distanceAt: f, timeAtDistance: (km) => (km / total) * duration, marks: { P: duration, Q: duration } };
   }
   // 원호 구간은 짧아도 감상할 수 있도록 일정 비율의 시간을 보장한다.
+  // 시작은 활주로 이륙 활주(천천히), 끝은 착륙 후 감속.
   const tP = duration * 0.44;
   const tQ = duration * 0.72;
-  const xs = [0, duration * 0.06, tP, tQ, duration * 0.95, duration];
   const L1 = pcs[0].length;
   const L12 = L1 + pcs[1].length;
-  const ys = [0, L1 * 0.06, L1, L12, L12 + pcs[2].length * 0.97, total];
+  const L3 = pcs[2].length;
+  const roll = Math.min(RUNWAY_ROLL_KM, L1 * 0.2);
+  const climb = Math.max(roll + 1, Math.min(70, L1 * 0.35));
+  const approach = Math.max(total - L3 * 0.5, Math.min(total - 110, total - 5));
+  const flare = Math.max(approach + 0.5, total - LANDING_ROLL_KM);
+  const xs = [0, duration * 0.07, duration * 0.12, tP, tQ, duration * 0.86, duration * 0.95, duration];
+  const ys = [0, roll, climb, L1, L12, Math.max(L12 + 1e-3, approach), Math.max(L12 + 2e-3, flare), total];
   const f = monotoneCubic(xs, ys, [0, 0]);
   const timeAtDistance = (km: number) => {
     let lo = 0;

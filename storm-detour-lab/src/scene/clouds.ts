@@ -143,9 +143,9 @@ export function makeStorm(trip: Trip, seed: number, lighting: LightingUniforms):
   const S = (k: number, min: number, max = 11) => Math.min(max, Math.max(min, r * k));
 
   // 눈벽: 낮은 곳부터 순항 고도보다 높이
-  for (let i = 0; i < 320; i++) {
-    const z = 1.5 + Math.pow(rand(), 0.8) * 14;
-    add(r * (0.09 + rand() * 0.1), rand() * Math.PI * 2, z, S(0.07, 3) * (0.8 + rand() * 0.6), 0.9, 0.62 + (z / 15.5) * 0.42);
+  for (let i = 0; i < 360; i++) {
+    const z = 1.5 + Math.pow(rand(), 0.8) * 16.5;
+    add(r * (0.09 + rand() * 0.1), rand() * Math.PI * 2, z, S(0.07, 3) * (0.8 + rand() * 0.6), 0.9, 0.42 + (z / 18) * 0.62);
   }
   // 중심 구름덮개(CDO): 높고 넓게 덮인 하얀 구름
   for (let i = 0; i < 560; i++) {
@@ -166,11 +166,19 @@ export function makeStorm(trip: Trip, seed: number, lighting: LightingUniforms):
   // 바깥 구름벽: 진입 금지 원 바로 안쪽에 높이 솟아, 비행기 옆으로 태풍이 보이게
   const wallN = Math.round(Math.min(2400, 300 + r * 2.2));
   for (let i = 0; i < wallN; i++) {
-    const z = 1.2 + Math.pow(rand(), 0.9) * 12.5;
+    const z = 1.0 + Math.pow(rand(), 0.85) * 15.5;
     const size = S(0.04, 3.5, 9) * (0.8 + rand() * 0.7);
     const margin = Math.max(3, r * 0.02) + rand() * r * 0.06;
     const rho = r - margin - size * 0.5;
-    add(rho, rand() * Math.PI * 2, z, size, 0.85, 0.55 + (z / 14) * 0.5);
+    add(rho, rand() * Math.PI * 2, z, size, 0.85, 0.32 + Math.pow(z / 16.5, 0.8) * 0.72);
+  }
+  // 비 줄기: 구름벽 아래로 늘어진 어두운 커튼
+  for (let i = 0; i < Math.min(500, 120 + r * 0.5); i++) {
+    const size = S(0.025, 2.2, 5);
+    const margin = Math.max(4, r * 0.03) + rand() * r * 0.1;
+    // 아래끝(반높이)이 해수면 위에 머물도록 띄운다 — 바다와 만나면 수평 경계선이 생긴다
+    const half = size * 2.6 * 0.5;
+    add(r - margin - size, rand() * Math.PI * 2, half * 0.95 + 0.3 + rand() * 0.9, size, 2.6, 0.3 + rand() * 0.12);
   }
   const layer = new CloudLayer(puffs, lighting, true);
   const group = new THREE.Group();
@@ -178,11 +186,23 @@ export function makeStorm(trip: Trip, seed: number, lighting: LightingUniforms):
   group.matrix.copy(basis);
   group.add(layer.mesh);
   const spin = c0.lat >= 0 ? 1 : -1; // 북반구 반시계, 남반구 시계
+  // 번개 일정: 2~6초마다 두 번 번쩍
+  let next = 1.5;
+  let since = 99;
   return {
     group,
     layer,
     update: (dt) => {
       layer.uniforms.uSpin.value += spin * dt * 0.025;
+      since += dt;
+      next -= dt;
+      if (next <= 0) {
+        next = 2 + rand() * 4;
+        since = 0;
+        layer.uniforms.uFlashSeed.value = rand();
+      }
+      const f = Math.exp(-since * 14) + (since > 0.12 ? 0.7 * Math.exp(-(since - 0.12) * 10) : 0);
+      layer.uniforms.uFlash.value = since < 0.8 ? f : 0;
     },
   };
 }

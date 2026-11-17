@@ -1,6 +1,6 @@
 import type { Trip } from '../math/trip';
 import { Radar } from './Radar';
-import { AH } from './Hat';
+import { Tex, tn } from './Tex';
 import { num } from '../format';
 
 interface Props {
@@ -57,32 +57,33 @@ export function Postcard({ trip, destLabel, destCode, onReplay, onNew, onClose }
           <h3>계산 노트 한 장 요약</h3>
           <ol className="pc-steps">
             <li>
-              좌표: O(0, 0), A({num(trip.t, 0)}, 0), C({num(trip.C.x, 0)}, {num(trip.C.y, 0)}), r = {num(r, 0)}
+              <Tex>{`O(0,0),\\ A(${tn(trip.t, 0)},0),\\ C(${tn(trip.C.x, 0)},${tn(trip.C.y, 0)}),\\ r=${tn(r, 0)}`}</Tex>
             </li>
             <li>
-              h = √(r² − b²) = {num(trip.result.h!, 1)} → 0 &lt; {num(trip.result.B1!.x, 0)} &lt; {num(trip.result.B2!.x, 0)} &lt; {num(trip.t, 0)}
+              <Tex>{`h=\\sqrt{r^2-b^2}=${tn(trip.result.h!, 1)},\\ 0<${tn(trip.result.B1!.x, 0)}<${tn(trip.result.B2!.x, 0)}<${tn(trip.t, 0)}`}</Tex>
             </li>
             <li>
-              b {trip.C.y > 0 ? '> 0' : trip.C.y < 0 ? '< 0' : '= 0'} → s = {d.s > 0 ? '+1 (위쪽)' : '−1 (아래쪽)'}
+              <Tex>{`b${trip.C.y > 0 ? '>0' : trip.C.y < 0 ? '<0' : '=0'}\\Rightarrow s=${d.s > 0 ? '+1' : '-1'}`}</Tex>
             </li>
             <li>
-              OP = ℓ_O = {num(d.lO, 1)}, AQ = ℓ_A = {num(d.lA, 1)}
+              <Tex>{`\\ell_O=${tn(d.lO, 1)},\\ \\ell_A=${tn(d.lA, 1)}`}</Tex>
             </li>
             <li>
-              P({num(d.P.x, 0)}, {num(d.P.y, 0)}), Q({num(d.Q.x, 0)}, {num(d.Q.y, 0)})
+              <Tex>{`P(${tn(d.P.x, 0)},${tn(d.P.y, 0)}),\\ Q(${tn(d.Q.x, 0)},${tn(d.Q.y, 0)})`}</Tex>
             </li>
             <li>
-              R({num(d.R.x, 0)}, {num(d.R.y, 0)}), CR = {num(d.dR, 1)}
+              <Tex>{`R(${tn(d.R.x, 0)},${tn(d.R.y, 0)}),\\ \\overline{CR}=${tn(d.dR, 1)}`}</Tex>
             </li>
             <li>
-              cos α = {d.interp.z.toFixed(6)} → {AH} ≈ {num(d.alphaHat, 4)}° ({d.interp.lower.deg}°~{d.interp.upper.deg}° 보간)
+              <Tex>{`\\cos\\alpha=${d.interp.z.toFixed(6)}\\Rightarrow\\hat\\alpha\\approx${tn(d.alphaHat, 4)}^\\circ`}</Tex>
             </li>
             <li>
-              호 = πr{AH}/90 = {num(d.arcHat, 1)} → L_min ≈ {num(d.Lmin, 1)} km
+              <Tex>{`L_{\\min}\\approx${tn(d.lO, 1)}+${tn(d.arcHat, 1)}+${tn(d.lA, 1)}=${tn(d.Lmin, 1)}`}</Tex>
             </li>
           </ol>
           <p className="pc-err">
-            표 보간 오차 α − {AH} = {num(d.interpErrorDeg, 4)}° → 거리 차이 {num(d.interpErrorLen, 2)} km (상한 πr/360 = {num(d.interpErrorBound, 1)} km)
+            표 보간 오차 <Tex>{`\\alpha-\\hat\\alpha=${tn(d.interpErrorDeg, 4)}^\\circ`}</Tex> → 거리 차이 {num(d.interpErrorLen, 2)} km (상한{' '}
+            <Tex>{`\\pi r/360=${tn(d.interpErrorBound, 1)}`}</Tex> km)
           </p>
           <div className="pc-btns">
             <button className="btn-soft" onClick={onReplay}>
