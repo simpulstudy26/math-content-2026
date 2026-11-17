@@ -125,11 +125,11 @@ function Silhouette({ x, y, s, cls }: { x: number; y: number; s: number; cls: st
 export function AirportScene({ mode, bubbles = [], destLabel }: Props) {
   const warn = mode === 'warn';
   const rows: [string, string, string, string][] = [
-    ['09:10', destLabel ? destLabel.toUpperCase().slice(0, 12) : 'TOKYO', 'SP101', '탑승 중'],
-    ['10:40', 'PARIS', 'SP207', '정시'],
-    ['11:25', 'NEW YORK', 'SP011', '정시'],
-    ['12:05', 'SYDNEY', 'SP305', '태풍 주의'],
-    ['13:30', 'BANGKOK', 'SP661', '정시'],
+    ['09:10', destLabel ? destLabel.toUpperCase().slice(0, 12) : 'TOKYO', 'G12', '탑승 중'],
+    ['10:40', 'PARIS', 'G07', '정시'],
+    ['11:25', 'NEW YORK', 'G21', '정시'],
+    ['12:05', 'SYDNEY', 'G15', '태풍 주의'],
+    ['13:30', 'BANGKOK', 'G03', '정시'],
   ];
   return (
     <div className={`apscene mode-${mode}`}>
@@ -159,12 +159,11 @@ export function AirportScene({ mode, bubbles = [], destLabel }: Props) {
         <rect x="0" y="455" width="1600" height="75" fill="#9aa39a" />
         <rect x="0" y="470" width="1600" height="16" fill="#6d7276" />
         <rect x="0" y="476" width="1600" height="2" fill="#e8e8e2" opacity="0.6" />
-        {/* 바깥의 여객기 (심풀 항공) */}
+        {/* 바깥의 여객기 */}
         <g transform="translate(860 400)">
           <ellipse cx="240" cy="40" rx="240" ry="26" fill="#f4f4f1" />
           <rect x="20" y="44" width="440" height="16" fill={NAVY} opacity="0.9" rx="8" />
           <path d="M 420 30 L 470 -60 L 505 -60 L 490 40 Z" fill={NAVY} />
-          <circle cx="478" cy="-22" r="12" fill="none" stroke={GOLD} strokeWidth="5" />
           <path d="M 180 52 L 330 90 L 360 90 L 260 50 Z" fill="#c9ccd0" />
           <ellipse cx="250" cy="80" rx="26" ry="11" fill="#e9e9e6" />
           {Array.from({ length: 22 }, (_, i) => (
@@ -226,19 +225,17 @@ export function AirportScene({ mode, bubbles = [], destLabel }: Props) {
         </g>
         {/* 체크인 카운터 */}
         <g transform="translate(1060 470)">
-          <rect x="120" y="-130" width="8" height="70" fill="#3b465c" />
-          <rect x="300" y="-130" width="8" height="70" fill="#3b465c" />
-          <rect x="70" y="-180" width="290" height="60" rx="8" fill={NAVY} />
-          <circle cx="110" cy="-150" r="15" fill="none" stroke={GOLD} strokeWidth="5" />
-          <circle cx="114" cy="-155" r="5" fill={GOLD} />
-          <text x="138" y="-142" fill="#f3ead8" fontSize="26" fontWeight="700" fontFamily="'Gowun Batang', serif">
-            SIMPUL AIR
+          <rect x="110" y="-190" width="6" height="110" fill="#3b465c" />
+          <rect x="274" y="-190" width="6" height="110" fill="#3b465c" />
+          <rect x="70" y="-250" width="250" height="60" rx="8" fill={NAVY} />
+          <text x="94" y="-213" fill="#f3ead8" fontSize="26" fontWeight="700" fontFamily="'Gowun Batang', serif">
+            체크인
           </text>
-          <text x="138" y="-124" fill={GOLD} fontSize="13" fontFamily="sans-serif" letterSpacing="2">
-            CHECK-IN · 체크인
+          <text x="94" y="-196" fill={GOLD} fontSize="12" fontFamily="sans-serif" letterSpacing="3">
+            CHECK-IN · 3
           </text>
           {/* 기상 화면 (안내원 뒤 벽) */}
-          <g transform="translate(380 -170)" className={warn ? 'wx-screen alert' : 'wx-screen'}>
+          <g transform="translate(345 -250)" className={warn ? 'wx-screen alert' : 'wx-screen'}>
             <rect x="0" y="0" width="150" height="104" rx="8" fill="#0f1726" stroke={warn ? '#ff6a4a' : '#3b465c'} strokeWidth="5" />
             {warn ? (
               <>
@@ -253,8 +250,8 @@ export function AirportScene({ mode, bubbles = [], destLabel }: Props) {
               </>
             ) : (
               <>
-                <circle cx="75" cy="44" r="20" fill="none" stroke={GOLD} strokeWidth="5" />
-                <circle cx="80" cy="38" r="6" fill={GOLD} />
+                <circle cx="62" cy="40" r="14" fill="#f2c46b" />
+                <ellipse cx="86" cy="52" rx="28" ry="13" fill="#dfe6ef" />
                 <text x="75" y="88" textAnchor="middle" fill="#cfd6e2" fontSize="13" fontFamily="sans-serif">
                   WEATHER
                 </text>
@@ -269,8 +266,7 @@ export function AirportScene({ mode, bubbles = [], destLabel }: Props) {
           <rect x="40" y="96" width="430" height="20" rx="4" fill="#efe9dd" />
           <rect x="52" y="116" width="406" height="200" fill={NAVY} />
           <rect x="52" y="116" width="406" height="8" fill={GOLD} />
-          <circle cx="255" cy="210" r="34" fill="none" stroke={GOLD} strokeWidth="7" />
-          <circle cx="263" cy="200" r="11" fill={GOLD} />
+          <text x="255" y="222" textAnchor="middle" fill="#f3ead8" opacity="0.85" fontSize="40" fontFamily="'Gowun Batang', serif">3</text>
           <rect x="300" y="60" width="70" height="40" rx="4" fill="#2a3240" />
           <rect x="330" y="96" width="10" height="6" fill="#2a3240" />
         </g>

@@ -1,7 +1,7 @@
 /**
  * 쌍발 협동체 여객기 (오리지널 모델, 실존 항공사·기종 아님). 단위 m.
  * 좌표: +X 오른쪽, +Y 위, −Z 앞. 원점 = 날개 중심 높이의 동체 축.
- * 도장: 흰 동체, 남색 배·꼬리, 금색 띠, 가상의 "SIMPUL AIR".
+ * 도장: 흰 동체, 남색 배·꼬리, 금색 띠, 항공사 표기 없음.
  */
 import * as THREE from 'three';
 
@@ -71,21 +71,6 @@ function fuselageTexture() {
     g.lineTo(u0 * W, cy + 12);
     g.closePath();
     g.fill();
-  }
-  // 항공사 이름 (양쪽, 동체 길이 방향으로 세워 씀)
-  g.fillStyle = NAVY;
-  g.font = 'bold 46px "Gowun Batang", Georgia, serif';
-  g.textAlign = 'center';
-  g.textBaseline = 'middle';
-  for (const [u, rot] of [
-    [0.16, -Math.PI / 2],
-    [0.84, Math.PI / 2],
-  ] as const) {
-    g.save();
-    g.translate(u * W, H * texY(-3.5));
-    g.rotate(rot);
-    g.fillText('SIMPUL AIR', 0, 0);
-    g.restore();
   }
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
@@ -258,16 +243,22 @@ export function buildAirliner(): Airliner {
   finG.rotateY(-Math.PI / 2);
   finG.translate(0.12, 0, 0);
   add(finG, navy);
-  // 꼬리 로고: 금색 고리 + 작은 원 (양쪽)
-  for (const s of [1, -1]) {
-    const ring = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.25, 40), gold);
-    ring.position.set(s * 0.23, 5.4, 17.3);
-    ring.rotation.y = (s * Math.PI) / 2;
-    group.add(ring);
-    const dot = new THREE.Mesh(new THREE.CircleGeometry(0.42, 24), gold);
-    dot.position.set(s * 0.235, 5.75, 17.0);
-    dot.rotation.y = (s * Math.PI) / 2;
-    group.add(dot);
+  // 꼬리 장식: 앞전과 나란한 금색 사선 띠 두 줄 — 특정 항공사 로고가 아닌 추상 무늬
+  const goldDS = gold.clone();
+  goldDS.side = THREE.DoubleSide;
+  for (const [z0, y0, w] of [[14.6, 2.6, 0.55], [15.55, 2.6, 0.26]] as const) {
+    const band = new THREE.Shape();
+    band.moveTo(z0, y0);
+    band.lineTo(z0 + w, y0);
+    band.lineTo(z0 + w + 2.6, y0 + 3.6);
+    band.lineTo(z0 + 2.6, y0 + 3.6);
+    band.closePath();
+    for (const sd of [1, -1]) {
+      const g = new THREE.ShapeGeometry(band);
+      g.rotateY(-Math.PI / 2);
+      g.translate(sd * 0.215, 0, 0);
+      group.add(new THREE.Mesh(g, goldDS));
+    }
   }
 
   // ── 바퀴 ──

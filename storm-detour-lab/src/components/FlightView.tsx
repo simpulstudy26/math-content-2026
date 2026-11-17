@@ -111,7 +111,7 @@ export function FlightView({ trip, destLabel, destCode, ticket, ambient, onExit 
           </div>
           {ticket && (
             <div className="route-ticket">
-              <span>SIMPUL AIR {ticket.flightNo}</span>
+              <span>{ticket.date} {ticket.dep} 출발</span>
               <span>좌석 {ticket.seat}</span>
               <span>{ticket.passenger}</span>
             </div>
@@ -240,7 +240,7 @@ export function FlightView({ trip, destLabel, destCode, ticket, ambient, onExit 
 
       <div className={`intro ${time > 3 ? 'gone' : ''}`}>
         <div>
-          <small>{ticket ? `${ticket.flightNo} · SEAT ${ticket.seat} · ` : ''}BOARDING COMPLETE</small>
+          <small>{ticket ? `${ticket.dep} DEPARTURE · SEAT ${ticket.seat} · ` : ''}BOARDING COMPLETE</small>
           <h2>{destLabel}</h2>
           <p>인천을 떠나 {num(trip.t, 0)} km의 여행. 창밖을 즐기는 동안 기내 노트에 최단 항로 계산이 하나씩 적혀요.</p>
         </div>

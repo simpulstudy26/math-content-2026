@@ -1,11 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Airport, CountryEntry } from '../data/airportTypes';
 import type { LatLon } from '../math/geoProjection';
 import { STATUS_TEXT } from '../math/detour';
 import type { Trip } from '../math/trip';
 import { CountryAirportSearch, koreanCountryName } from './CountryAirportSearch';
 import { BookingMap } from './BookingMap';
-import { AirportScene, type Bubble } from './AirportScene';
+import { AirportScene } from './AirportScene';
 import { rng } from '../scene/clouds';
 import { num } from '../format';
 
@@ -16,6 +16,7 @@ export interface Storm {
 
 export interface Ticket {
   passenger: string;
+  /** 출발 시간대 이름 (예: 아침 출발) — 항공사·편명은 쓰지 않는다 */
   flightNo: string;
   date: string;
   dep: string;
@@ -23,6 +24,13 @@ export interface Ticket {
   seat: string;
   gate: string;
   boarding: string;
+}
+
+export interface Popular {
+  label: string;
+  code: string;
+  country: string;
+  run: () => void;
 }
 
 interface Props {
@@ -40,61 +48,78 @@ interface Props {
   trip: Trip | null;
   tripError: string | null;
   onBoard: (t: Ticket) => void;
-  popular: { label: string; run: () => void }[];
+  popular: Popular[];
   onAbout: () => void;
 }
 
-const STEPS = ['항공편 검색', '항공편 선택', '기상 안내', '좌석 선택', '탑승권'];
-const NAVY = '#1b2b4a';
+const STEPS = ['목적지', '출발 시각', '기상', '좌석', '탑승권'];
 
 const pad = (n: number) => String(n).padStart(2, '0');
-const hhmm = (min: number) => `${pad(Math.floor(((min % 1440) + 1440) % 1440 / 60))}:${pad(Math.round(((min % 60) + 60) % 60))}`;
+const hhmm = (min: number) => `${pad(Math.floor((((min % 1440) + 1440) % 1440) / 60))}:${pad(Math.round(((min % 60) + 60) % 60))}`;
+const dur = (m: number) => `${Math.floor(m / 60)}시간 ${pad(m % 60)}분`;
 
-function Logo({ size = 26 }: { size?: number }) {
+function Barcode({ seed }: { seed: number }) {
+  const r = rng(seed);
+  const bars: [number, number][] = [];
+  let x = 0;
+  while (x < 300) {
+    const w = 1 + Math.floor(r() * 4);
+    bars.push([x, w]);
+    x += w + 1 + Math.floor(r() * 3);
+  }
   return (
-    <svg width={size} height={size} viewBox="0 0 40 40" aria-hidden>
-      <circle cx="20" cy="20" r="14" fill="none" stroke="#c9a252" strokeWidth="5" />
-      <circle cx="23" cy="16" r="5" fill="#c9a252" />
+    <svg viewBox="0 0 300 50" className="barcode" preserveAspectRatio="none" aria-hidden>
+      {bars.map(([bx, w], i) => (
+        <rect key={i} x={bx} y="0" width={w} height="50" fill="currentColor" />
+      ))}
     </svg>
   );
 }
 
-function Barcode({ seed }: { seed: number }) {
-  const r = rng(seed);
-  const bars: number[] = [];
-  let x = 0;
-  while (x < 300) {
-    const w = 1 + Math.floor(r() * 4);
-    bars.push(x, w);
-    x += w + 1 + Math.floor(r() * 3);
-  }
+/** 태풍 모양 표식 (특정 브랜드가 아닌 기상 기호) */
+function Mark({ size = 22 }: { size?: number }) {
   return (
-    <svg viewBox="0 0 300 50" className="barcode" preserveAspectRatio="none">
-      {bars.map((v, i) => (i % 2 === 0 ? <rect key={i} x={v} y="0" width={bars[i + 1]} height="50" fill={NAVY} /> : null))}
+    <svg width={size} height={size} viewBox="-20 -20 40 40" aria-hidden className="bx-mark">
+      <path d="M0 0m-10 0a10 10 0 1 1 10 10M0 0m10 0a10 10 0 1 1-10-10" stroke="currentColor" strokeWidth="3.2" fill="none" strokeLinecap="round" />
+      <circle r="2.6" fill="currentColor" />
     </svg>
   );
+}
+
+function useMapPadding() {
+  const calc = () => {
+    const w = window.innerWidth;
+    return w < 900 ? { top: 90, right: 72, bottom: Math.round(window.innerHeight * 0.58), left: 40 } : { top: 110, right: 70, bottom: 70, left: Math.min(560, w * 0.42) };
+  };
+  const [p, setP] = useState(calc);
+  useEffect(() => {
+    const on = () => setP(calc());
+    window.addEventListener('resize', on);
+    return () => window.removeEventListener('resize', on);
+  }, []);
+  return p;
 }
 
 export function BookingFlow(p: Props) {
   const [step, setStep] = useState(0);
-  const [passenger, setPassenger] = useState('심풀 여행자');
+  const [passenger, setPassenger] = useState('여행자');
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [flightIdx, setFlightIdx] = useState<number | null>(null);
   const [seat, setSeat] = useState<string | null>(null);
   const [briefingSeen, setBriefingSeen] = useState(false);
   const [placing, setPlacing] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const padding = useMapPadding();
   const trip = p.trip;
   const res = trip?.result;
 
   const flights = useMemo(() => {
     if (!trip || !p.dest) return [];
     const durMin = Math.round(((trip.t / 830) * 60 + 35) / 5) * 5;
-    const base = 900 + Math.round(trip.t / 9) * 5;
-    const code = (p.dest.iata || p.dest.ident).charCodeAt(0);
     return [
-      { no: `SP ${100 + (code % 9) * 10 + 1}`, dep: 9 * 60 + 10, cls: '이코노미', fare: base },
-      { no: `SP ${300 + (code % 7) * 10 + 5}`, dep: 13 * 60 + 40, cls: '이코노미', fare: base + 140 },
-      { no: `SP ${700 + (code % 5) * 10 + 9}`, dep: 18 * 60 + 25, cls: '비즈니스', fare: base * 3 },
+      { name: '아침 출발', mood: '여유로운 아침', dep: 9 * 60 + 10 },
+      { name: '오후 출발', mood: '한낮의 비행', dep: 13 * 60 + 40 },
+      { name: '저녁 출발', mood: '해 질 녘 도착', dep: 17 * 60 + 25 },
     ].map((f) => ({ ...f, durMin, arr: f.dep + durMin }));
   }, [trip, p.dest]);
 
@@ -106,13 +131,14 @@ export function BookingFlow(p: Props) {
   }, [p.dest, flightIdx]);
 
   const fl = flightIdx !== null ? flights[flightIdx] : null;
+  const destCode = p.dest ? p.dest.iata || p.dest.ident : '';
   const destName = p.dest ? p.dest.municipality || p.dest.name : '';
   const destCountry = p.dest ? koreanCountryName(p.dest.country, p.dest.country) : '';
   const ticket: Ticket | null =
     fl && seat && p.dest
       ? {
           passenger,
-          flightNo: fl.no,
+          flightNo: fl.name,
           date,
           dep: hhmm(fl.dep),
           arr: hhmm(fl.arr),
@@ -125,143 +151,193 @@ export function BookingFlow(p: Props) {
   const canNext = [!!p.dest && !!trip, fl !== null, !!trip?.canFly, !!seat, !!ticket][step];
   const h = res?.h ?? null;
   const blocking = trip?.warnings.find((w) => w.blocking);
+  const isWin = (s: string) => s.endsWith('A') || s.endsWith('F');
 
-  const agentLine: Record<number, Bubble> = {
-    0: { who: 'agent', text: p.dest ? `${destName}(${destCountry}) 말씀이시죠? 좋은 선택이에요!` : '어디로 떠나시나요? 도착지를 검색해 주세요.' },
-    1: { who: 'agent', text: '오늘 이 노선에는 세 편이 있어요. 원하시는 시간을 골라 주세요.' },
-    3: { who: 'agent', text: '창가 좌석(A·F)에서는 태풍을 비켜 도는 모습이 잘 보여요.' },
-    4: { who: 'agent', text: '탑승권 나왔습니다. 태풍은 최단 우회 항로로 안전하게 피해 갈게요. 좋은 여행 되세요!' },
+  const go = (n: number) => {
+    setStep(n);
+    setPlacing(false);
   };
 
   return (
-    <div className="bk">
-      <header className="bk-top">
-        <div className="bk-brand">
-          <Logo />
-          <b>SIMPUL AIR</b>
-          <span>심풀 항공 · 인천 출발 예약</span>
+    <div className={`bx step-${step}`}>
+      <div className="bx-map">
+        <BookingMap
+          destination={p.dest}
+          airports={step === 0 ? p.airports : null}
+          trip={trip}
+          showStorm={step >= 2}
+          stormEditable={step === 2}
+          padding={padding}
+          placing={placing}
+          onPlace={(c) => {
+            p.onStorm({ center: c, radius: p.storm?.radius ?? 400 });
+            setPlacing(false);
+          }}
+          onStormDrag={(c) => p.storm && p.onStorm({ ...p.storm, center: c })}
+          onSelectAirport={(id) => {
+            const a = p.airports?.find((x) => x.id === id);
+            if (a && a.type !== 'closed' && a.type !== 'closed_airport' && a.ident !== 'RKSI') p.onDest(a);
+          }}
+        />
+      </div>
+      <div className="bx-shade" />
+
+      <header className="bx-top">
+        <div className="bx-brand">
+          <Mark />
+          <span>태풍을 지나는 여행</span>
         </div>
-        <ol className="bk-steps">
+        <ol className="bx-steps">
           {STEPS.map((s, i) => (
             <li key={s} className={i === step ? 'on' : i < step ? 'done' : ''}>
-              <span>{i < step ? '✓' : i + 1}</span>
-              {s}
+              <button disabled={i > step} onClick={() => i < step && go(i)}>
+                <em>{pad(i + 1)}</em>
+                {s}
+              </button>
             </li>
           ))}
         </ol>
-        <button className="link-btn light" onClick={p.onAbout}>
-          정보
+        <button className="bx-link" onClick={p.onAbout}>
+          이 앱에 대하여
         </button>
       </header>
 
-      <main className={`bk-main step-${step}`}>
-        <section className="bk-form">
-          {/* ① 검색 */}
+      <aside className="bx-panel">
+        <div className="bx-scroll" key={step}>
+          {/* ① 목적지 */}
           {step === 0 && (
             <>
-              <h2>어디로 떠나세요?</h2>
-              <div className="route-pick">
-                <div className="rp-box">
-                  <small>출발</small>
+              <div className="bx-eyebrow">01 · 목적지</div>
+              <h1 className="bx-h1">어디로 떠나볼까요?</h1>
+              <p className="bx-lede">인천에서 출발합니다. 목적지를 고르면 지도에 직선 항로가 그려져요.</p>
+
+              <div className="bx-route">
+                <div>
                   <b>ICN</b>
-                  <span>인천국제공항</span>
+                  <span>인천</span>
                 </div>
-                <span className="rp-arrow">✈</span>
-                <div className={`rp-box ${p.dest ? '' : 'empty'}`}>
-                  <small>도착</small>
-                  <b>{p.dest ? p.dest.iata || p.dest.ident : '———'}</b>
-                  <span>{p.dest ? `${destName} · ${destCountry}` : '아래에서 검색'}</span>
+                <div className="bx-route-line">
+                  <i />
+                  {trip && <small>{num(trip.t, 0)} km</small>}
+                </div>
+                <div className={`r ${p.dest ? '' : 'empty'}`}>
+                  <b>{p.dest ? destCode : '···'}</b>
+                  <span>{p.dest ? `${destName} · ${destCountry}` : '목적지'}</span>
                 </div>
               </div>
-              <div className="field-row">
+
+              <div className="bx-label">추천 여행지</div>
+              <div className="bx-dests">
+                {p.popular.map((d) => (
+                  <button key={d.code} className={`bx-dest ${destCode === d.code ? 'on' : ''}`} onClick={d.run}>
+                    <b>{d.code}</b>
+                    <span>{d.label}</span>
+                    <small>{d.country}</small>
+                  </button>
+                ))}
+              </div>
+
+              <button className={`bx-expand ${searchOpen ? 'open' : ''}`} onClick={() => setSearchOpen(!searchOpen)}>
+                <span>세계의 모든 공항에서 찾기</span>
+                <small>86,000여 곳 · 국가 → 공항</small>
+                <i>{searchOpen ? '−' : '+'}</i>
+              </button>
+              {searchOpen && (
+                <div className="bx-search">
+                  {p.loadError && <div className="bx-msg bad">{p.loadError}</div>}
+                  <CountryAirportSearch
+                    countries={p.countries}
+                    country={p.country}
+                    onCountry={p.onCountry}
+                    airports={p.airports}
+                    loadingAirports={p.loadingAirports}
+                    selected={p.dest}
+                    onSelect={p.onDest}
+                  />
+                </div>
+              )}
+              {p.tripError && <div className="bx-msg bad">{p.tripError}</div>}
+
+              <div className="bx-fields">
                 <label>
                   <small>가는 날</small>
-                  <input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} />
+                  <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
                 </label>
                 <label>
-                  <small>탑승객 이름</small>
-                  <input className="input" value={passenger} maxLength={16} onChange={(e) => setPassenger(e.target.value)} />
+                  <small>탑승객</small>
+                  <input value={passenger} maxLength={16} onChange={(e) => setPassenger(e.target.value)} />
                 </label>
               </div>
-              <div className="demo-row">
-                <span>인기 여행지</span>
-                {p.popular.map((d) => (
-                  <button key={d.label} className="chip" onClick={d.run}>
-                    {d.label}
-                  </button>
-                ))}
-              </div>
-              {p.loadError && <div className="msg bad">{p.loadError}</div>}
-              <CountryAirportSearch
-                countries={p.countries}
-                country={p.country}
-                onCountry={p.onCountry}
-                airports={p.airports}
-                loadingAirports={p.loadingAirports}
-                selected={p.dest}
-                onSelect={p.onDest}
-              />
-              {p.tripError && <div className="msg bad">{p.tripError}</div>}
             </>
           )}
 
-          {/* ② 항공편 선택 */}
+          {/* ② 출발 시각 */}
           {step === 1 && trip && (
             <>
-              <h2>
-                ICN → {p.dest?.iata || p.dest?.ident} <small>{date}</small>
-              </h2>
-              <p className="muted small">직항 · 직선 거리 {num(trip.t, 0)} km · 가상 항공사(심풀 항공)의 연습용 운항표</p>
-              <div className="flights">
+              <div className="bx-eyebrow">02 · 출발 시각</div>
+              <h1 className="bx-h1">
+                {destName}까지,
+                <br />
+                언제 떠날까요?
+              </h1>
+              <p className="bx-lede">
+                {date} · 직항 · 직선 거리 {num(trip.t, 0)} km
+              </p>
+              <div className="bx-flights">
                 {flights.map((f, i) => (
-                  <button key={f.no} className={`flight-card ${flightIdx === i ? 'on' : ''}`} onClick={() => setFlightIdx(i)}>
-                    <div className="fc-time">
-                      <b>{hhmm(f.dep)}</b>
-                      <span className="fc-line">
-                        <i />
-                        {Math.floor(f.durMin / 60)}시간 {f.durMin % 60}분 · 직항
-                      </span>
-                      <b>{hhmm(f.arr)}</b>
+                  <button key={f.name} className={`bx-flight ${flightIdx === i ? 'on' : ''}`} onClick={() => setFlightIdx(i)}>
+                    <div className="bf-head">
+                      <span>{f.name}</span>
+                      <small>{f.mood}</small>
                     </div>
-                    <div className="fc-meta">
-                      <span>{f.no}</span>
-                      <span>{f.cls}</span>
-                      <span>SA-321 (가상 기종)</span>
-                      <b>₩{(f.fare * 100).toLocaleString()}</b>
+                    <div className="bf-times">
+                      <div>
+                        <b>{hhmm(f.dep)}</b>
+                        <small>ICN</small>
+                      </div>
+                      <div className="bf-line">
+                        <i />
+                        <small>{dur(f.durMin)}</small>
+                      </div>
+                      <div className="r">
+                        <b>{hhmm(f.arr)}</b>
+                        <small>{destCode}</small>
+                      </div>
                     </div>
                   </button>
                 ))}
               </div>
+              <p className="bx-fine">출발·도착 시각은 직선 거리로 어림한 가상의 값입니다.</p>
             </>
           )}
 
-          {/* ③ 기상 안내 = 태풍 배치 */}
+          {/* ③ 기상 = 태풍 배치 */}
           {step === 2 && trip && res && (
             <>
-              <div className="agent-note alert">
-                <span className="ag-face">!</span>
-                <p>
-                  <b>출발 전 기상 안내</b>
-                  <br />
-                  예정 항로에 태풍이 접근하고 있어요. 지도에서 태풍의 위치와 크기를 확인해 주세요. 태풍이 항로를 관통하면 <b>접선–원호–접선</b>의 최단 우회 항로로 운항합니다.
-                </p>
-              </div>
-              <div className="btn-row">
-                <button className="btn-soft" onClick={() => p.onSuggest(1)}>
-                  예보 A (항로 왼쪽)
-                </button>
-                <button className="btn-soft" onClick={() => p.onSuggest(-1)}>
-                  예보 B (항로 오른쪽)
-                </button>
-                <button className={`btn-soft ${placing ? 'on' : ''}`} onClick={() => setPlacing(!placing)}>
-                  {placing ? '지도를 클릭…' : '지도에 직접 놓기'}
+              <div className="bx-eyebrow alert">03 · 기상 경보</div>
+              <h1 className="bx-h1">항로 위에 태풍이 있어요</h1>
+              <p className="bx-lede">
+                태풍을 반지름 r인 <b>원</b>으로 보고, 원을 피하는 가장 짧은 길 — <b>접선 · 원호 · 접선</b> — 으로 돌아갑니다. 태풍의 위치와 크기를 정해 주세요.
+              </p>
+
+              <div className="bx-label">태풍 위치</div>
+              <div className="bx-seg">
+                <button onClick={() => p.onSuggest(1)}>예보 A · 왼쪽</button>
+                <button onClick={() => p.onSuggest(-1)}>예보 B · 오른쪽</button>
+                <button className={placing ? 'on' : ''} onClick={() => setPlacing(!placing)}>
+                  {placing ? '지도를 클릭하세요' : '직접 놓기'}
                 </button>
               </div>
+              <p className="bx-fine">지도의 태풍 표식을 끌어서 옮길 수도 있어요.</p>
+
               {p.storm && (
-                <label className="slider">
-                  <span>
-                    태풍 반지름 <b>r = {num(p.storm.radius, 0)} km</b>
-                  </span>
+                <label className="bx-range">
+                  <div>
+                    <span>태풍 반지름</span>
+                    <b>
+                      r = {num(p.storm.radius, 0)} <small>km</small>
+                    </b>
+                  </div>
                   <input
                     type="range"
                     min={20}
@@ -272,23 +348,34 @@ export function BookingFlow(p: Props) {
                   />
                 </label>
               )}
-              <p className="muted small">지도에서 🌀를 끌어 태풍을 옮길 수 있어요.</p>
-              <div className="check">
-                <div className="check-title">관통 판정 · 계산 좌표 O(0,0), A(t,0)</div>
+
+              <div className="bx-check">
+                <div className="bx-check-head">
+                  <span>관통 판정</span>
+                  <small>O(0, 0) · A(t, 0) · C(a, b)</small>
+                </div>
                 <ul>
                   <li className={res.r2mb2 > 0 ? 'ok' : 'no'}>
-                    r² − b² = {num(res.r2mb2, 0)} {res.r2mb2 > 0 ? '> 0' : '≤ 0'} {h !== null && <>→ h = {num(h, 1)}</>}
+                    <span>r² − b² &gt; 0</span>
+                    <code>
+                      {num(res.r2mb2, 0)}
+                      {h !== null && <> → h = {num(h, 1)}</>}
+                    </code>
                   </li>
-                  <li className={h === null ? 'na' : res.a - h > 0 ? 'ok' : 'no'}>0 &lt; a − h {h !== null && <>= {num(res.a - h, 1)}</>}</li>
+                  <li className={h === null ? 'na' : res.a - h > 0 ? 'ok' : 'no'}>
+                    <span>0 &lt; a − h</span>
+                    <code>{h !== null ? num(res.a - h, 1) : '—'}</code>
+                  </li>
                   <li className={h === null ? 'na' : res.a + h < trip.t ? 'ok' : 'no'}>
-                    a + h &lt; t {h !== null && <>: {num(res.a + h, 1)} &lt; {num(trip.t, 1)}</>}
+                    <span>a + h &lt; t</span>
+                    <code>{h !== null ? `${num(res.a + h, 1)} < ${num(trip.t, 1)}` : '—'}</code>
                   </li>
                 </ul>
-                <div className={`msg ${trip.canFly ? 'good' : 'warn'}`}>{blocking ? blocking.message : STATUS_TEXT[res.status]}</div>
+                <div className={`bx-verdict ${trip.canFly ? 'good' : 'warn'}`}>{blocking ? blocking.message : STATUS_TEXT[res.status]}</div>
                 {trip.warnings
                   .filter((w) => !w.blocking)
                   .map((w) => (
-                    <div key={w.code} className="msg note">
+                    <div key={w.code} className="bx-msg">
                       {w.message}
                     </div>
                   ))}
@@ -299,191 +386,178 @@ export function BookingFlow(p: Props) {
           {/* ④ 좌석 */}
           {step === 3 && (
             <>
-              <h2>좌석을 골라 주세요</h2>
-              <p className="muted small">
-                {fl?.no} · {fl?.cls} · 회색은 이미 예약된 좌석
-              </p>
-              <div className="seatmap">
-                <div className="sm-head">
+              <div className="bx-eyebrow">04 · 좌석</div>
+              <h1 className="bx-h1">창밖이 보이는 자리로</h1>
+              <p className="bx-lede">창가(A·F)에서는 태풍을 비켜 도는 구름벽이 잘 보여요.</p>
+              <div className="bx-legend">
+                <span>
+                  <i className="s free" />
+                  선택 가능
+                </span>
+                <span>
+                  <i className="s win" />
+                  창가
+                </span>
+                <span>
+                  <i className="s taken" />
+                  예약됨
+                </span>
+                <span>
+                  <i className="s on" />
+                  내 좌석
+                </span>
+              </div>
+              <div className="bx-cabin">
+                <div className="bx-nose" />
+                <div className="bx-cols">
                   {['A', 'B', 'C', '', 'D', 'E', 'F'].map((c, i) => (
                     <span key={i}>{c}</span>
                   ))}
                 </div>
-                <div className="sm-body">
-                  {Array.from({ length: 24 }, (_, r) => r + 1).map((row) => (
-                    <div key={row} className="sm-row">
-                      {['A', 'B', 'C', '', 'D', 'E', 'F'].map((c, i) =>
-                        c === '' ? (
-                          <span key={i} className="sm-aisle">
-                            {row}
-                          </span>
-                        ) : (
-                          <button
-                            key={i}
-                            disabled={taken.has(`${row}${c}`)}
-                            className={`seat ${seat === `${row}${c}` ? 'on' : ''} ${c === 'A' || c === 'F' ? 'win' : ''}`}
-                            onClick={() => setSeat(`${row}${c}`)}
-                            aria-label={`${row}${c}`}
-                          />
-                        ),
-                      )}
-                    </div>
-                  ))}
-                </div>
+                {Array.from({ length: 24 }, (_, r) => r + 1).map((row) => (
+                  <div key={row} className={`bx-row ${row === 12 ? 'exit' : ''}`}>
+                    {['A', 'B', 'C', '', 'D', 'E', 'F'].map((c, i) =>
+                      c === '' ? (
+                        <span key={i} className="bx-aisle">
+                          {row}
+                        </span>
+                      ) : (
+                        <button
+                          key={i}
+                          disabled={taken.has(`${row}${c}`)}
+                          className={`bx-seat ${seat === `${row}${c}` ? 'on' : ''} ${c === 'A' || c === 'F' ? 'win' : ''}`}
+                          onClick={() => setSeat(`${row}${c}`)}
+                          aria-label={`${row}${c}`}
+                        />
+                      ),
+                    )}
+                  </div>
+                ))}
               </div>
-              <p className="small">{seat ? `선택한 좌석: ${seat}${seat.endsWith('A') || seat.endsWith('F') ? ' (창가)' : ''}` : '좌석을 눌러 선택하세요.'}</p>
             </>
           )}
 
           {/* ⑤ 탑승권 */}
           {step === 4 && ticket && trip && (
             <>
-              <h2>탑승권</h2>
-              <div className="bpass">
-                <div className="bp-main">
-                  <div className="bp-head">
-                    <Logo size={22} />
-                    <b>SIMPUL AIR</b>
-                    <span>BOARDING PASS · 탑승권</span>
+              <div className="bx-eyebrow">05 · 탑승권</div>
+              <h1 className="bx-h1">준비 끝, 좋은 여행 되세요</h1>
+              <div className="bx-pass">
+                <div className="bp-top">
+                  <span>BOARDING PASS</span>
+                  <span>{ticket.date}</span>
+                </div>
+                <div className="bp-route">
+                  <div>
+                    <b>ICN</b>
+                    <span>인천</span>
                   </div>
-                  <div className="bp-route">
-                    <div>
-                      <small>FROM</small>
-                      <b>ICN</b>
-                      <span>인천</span>
-                    </div>
-                    <span className="bp-plane">✈</span>
-                    <div className="r">
-                      <small>TO</small>
-                      <b>{p.dest?.iata || p.dest?.ident}</b>
-                      <span>{destName}</span>
-                    </div>
+                  <div className="bp-mid">
+                    <i />
+                    <small>{dur(fl!.durMin)}</small>
                   </div>
-                  <div className="bp-grid">
-                    <div>
-                      <small>PASSENGER</small>
-                      <b>{ticket.passenger}</b>
-                    </div>
-                    <div>
-                      <small>FLIGHT</small>
-                      <b>{ticket.flightNo}</b>
-                    </div>
-                    <div>
-                      <small>DATE</small>
-                      <b>{ticket.date}</b>
-                    </div>
-                    <div>
-                      <small>GATE</small>
-                      <b>{ticket.gate}</b>
-                    </div>
-                    <div>
-                      <small>BOARDING</small>
-                      <b>{ticket.boarding}</b>
-                    </div>
-                    <div>
-                      <small>SEAT</small>
-                      <b>{ticket.seat}</b>
-                    </div>
-                  </div>
-                  <div className="bp-note">
-                    ⚠ 태풍 회피 운항 · 예상 비행 거리 L<sub>min</sub> ≈ {num(trip.result.detour!.Lmin, 0)} km (직선 {num(trip.t, 0)} km)
+                  <div className="r">
+                    <b>{destCode}</b>
+                    <span>{destName}</span>
                   </div>
                 </div>
-                <div className="bp-stub">
-                  <small>SEAT</small>
-                  <b>{ticket.seat}</b>
-                  <small>GATE</small>
-                  <b>{ticket.gate}</b>
+                <div className="bp-grid">
+                  <div>
+                    <small>탑승객</small>
+                    <b>{ticket.passenger}</b>
+                  </div>
+                  <div>
+                    <small>출발</small>
+                    <b>{ticket.dep}</b>
+                  </div>
+                  <div>
+                    <small>도착</small>
+                    <b>{ticket.arr}</b>
+                  </div>
+                  <div>
+                    <small>탑승구</small>
+                    <b>{ticket.gate}</b>
+                  </div>
+                  <div>
+                    <small>탑승 시작</small>
+                    <b>{ticket.boarding}</b>
+                  </div>
+                  <div>
+                    <small>좌석</small>
+                    <b>
+                      {ticket.seat}
+                      {isWin(ticket.seat) && <em> 창가</em>}
+                    </b>
+                  </div>
+                </div>
+                <div className="bp-perf" />
+                <div className="bp-bottom">
+                  <div className="bp-note">
+                    <small>태풍 회피 운항</small>
+                    <span>
+                      예상 비행 거리 <b>L<sub>min</sub> ≈ {num(trip.result.detour!.Lmin, 0)} km</b>
+                      <br />
+                      직선 t = {num(trip.t, 0)} km
+                    </span>
+                  </div>
                   <Barcode seed={(p.dest?.id ?? 1) + ticket.seat.charCodeAt(0)} />
                 </div>
               </div>
             </>
           )}
+        </div>
 
-          <div className="bk-nav">
-            {step > 0 && (
-              <button className="btn-soft" onClick={() => setStep(step - 1)}>
-                ← 이전
-              </button>
-            )}
-            {step < 4 ? (
-              <button
-                className="btn-main"
-                disabled={!canNext}
-                onClick={() => {
-                  if (step === 1 && !briefingSeen) setBriefingSeen(false);
-                  setStep(step + 1);
-                  setPlacing(false);
-                }}
-              >
-                {['항공편 검색', '이 항공편 선택', '태풍 확인 완료', '좌석 확정', ''][step]} →
-              </button>
-            ) : (
-              <button className="board" onClick={() => ticket && p.onBoard(ticket)}>
-                탑승하기 ✈
-              </button>
-            )}
-          </div>
-          {step === 2 && !trip?.canFly && <p className="small muted right">태풍이 항로를 두 점에서 가로지르도록 놓아야 다음으로 갈 수 있어요.</p>}
-        </section>
-
-        <section className="bk-visual">
-          {step === 2 ? (
-            <>
-              <BookingMap
-                destination={p.dest}
-                airports={null}
-                trip={trip}
-                placing={placing}
-                onPlace={(c) => {
-                  p.onStorm({ center: c, radius: p.storm?.radius ?? 400 });
-                  setPlacing(false);
-                }}
-                onStormDrag={(c) => p.storm && p.onStorm({ ...p.storm, center: c })}
-                onSelectAirport={() => {}}
-              />
-              <div className="map-legend">
-                <span>
-                  <i className="lg base" />
-                  직선 항로 y = 0
-                </span>
-                <span>
-                  <i className="lg route" />
-                  최단 우회
-                </span>
-                <span>
-                  <i className="lg storm" />
-                  태풍 (진입 금지 원)
-                </span>
-              </div>
-            </>
-          ) : step === 0 && p.dest ? (
-            <>
-              <BookingMap
-                destination={p.dest}
-                airports={p.airports}
-                trip={null}
-                placing={false}
-                onPlace={() => {}}
-                onStormDrag={() => {}}
-                onSelectAirport={(id) => {
-                  const a = p.airports?.find((x) => x.id === id);
-                  if (a && a.type !== 'closed' && a.type !== 'closed_airport' && a.ident !== 'RKSI') p.onDest(a);
-                }}
-              />
-              <div className="scene-pip">
-                <AirportScene mode="counter" bubbles={[agentLine[0]]} destLabel={destName} />
-              </div>
-            </>
+        <footer className="bx-nav">
+          {step > 0 ? (
+            <button className="bx-back" onClick={() => go(step - 1)}>
+              ← 이전
+            </button>
           ) : (
-            <AirportScene mode="counter" bubbles={agentLine[step] ? [agentLine[step]] : []} destLabel={destName} />
+            <span />
           )}
-        </section>
-      </main>
+          {step === 3 && seat && (
+            <span className="bx-pick">
+              {seat}
+              {isWin(seat) ? ' · 창가' : ''}
+            </span>
+          )}
+          {step < 4 ? (
+            <button className="bx-next" disabled={!canNext} onClick={() => go(step + 1)}>
+              {['출발 시각 고르기', '기상 확인하기', '좌석 고르기', '탑승권 받기'][step]} →
+            </button>
+          ) : (
+            <button className="bx-next bx-board" onClick={() => ticket && p.onBoard(ticket)}>
+              탑승하기
+            </button>
+          )}
+        </footer>
+        {step === 2 && !trip?.canFly && <p className="bx-hint">태풍이 직선 항로를 두 점에서 가로지르도록 놓아야 다음으로 갈 수 있어요.</p>}
+      </aside>
+
+      {step === 2 && (
+        <div className="bx-mapkey">
+          <span>
+            <i className="k base" />
+            직선 항로
+          </span>
+          <span>
+            <i className="k route" />
+            최단 우회
+          </span>
+          <span>
+            <i className="k storm" />
+            태풍 (진입 금지 원)
+          </span>
+        </div>
+      )}
 
       {step === 2 && !briefingSeen && (
-        <div className="briefing" onClick={() => setBriefingSeen(true)}>
-          <div className="briefing-card" onClick={(e) => e.stopPropagation()}>
+        <div className="bx-brief" onClick={() => setBriefingSeen(true)}>
+          <div className="bx-brief-card" onClick={(e) => e.stopPropagation()}>
+            <div className="bx-brief-head">
+              <span className="dot" />
+              기상 브리핑 · 출발 전 안내
+            </div>
             <AirportScene
               mode="warn"
               destLabel={destName}
@@ -492,12 +566,12 @@ export function BookingFlow(p: Props) {
                 { who: 'traveler', text: '그럼 어떻게 가나요?', delay: 2.2 },
               ]}
             />
-            <div className="briefing-foot">
+            <div className="bx-brief-foot">
               <p>
-                안내원: “태풍을 <b>원</b>으로 보고, 원을 피하는 <b>가장 짧은 길</b>로 돌아갈 거예요. 먼저 태풍의 위치와 크기를 확인해 주세요.”
+                “태풍을 <b>원</b>으로 보고, 원을 피하는 <b>가장 짧은 길</b>로 돌아갈 거예요. 먼저 태풍의 위치와 크기를 확인해 주세요.”
               </p>
-              <button className="btn-main" onClick={() => setBriefingSeen(true)}>
-                기상 지도 확인하기 →
+              <button className="bx-next" onClick={() => setBriefingSeen(true)}>
+                기상 지도 보기 →
               </button>
             </div>
           </div>

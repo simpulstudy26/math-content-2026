@@ -14,7 +14,7 @@ export function AirportIntro({ onDone }: { onDone: () => void }) {
         <AirportScene
           mode="enter"
           bubbles={[
-            { who: 'agent', text: '어서 오세요, 심풀 항공입니다. 오늘은 어디로 떠나시나요?', delay: 4.4 },
+            { who: 'agent', text: '어서 오세요. 오늘은 어디로 떠나시나요?', delay: 4.4 },
             { who: 'traveler', text: '인천에서 출발하는 비행기를 예약하고 싶어요!', delay: 6.0 },
           ]}
         />

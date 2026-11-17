@@ -10,11 +10,12 @@ import { Ambient } from './audio/ambient';
 const DATA = `${import.meta.env.BASE_URL}data`;
 
 const DEMOS = [
-  { cc: 'JP', ident: 'RJAA', label: '도쿄' },
-  { cc: 'FR', ident: 'LFPG', label: '파리' },
-  { cc: 'US', ident: 'KJFK', label: '뉴욕' },
-  { cc: 'AU', ident: 'YSSY', label: '시드니' },
-  { cc: 'TH', ident: 'VTBS', label: '방콕' },
+  { cc: 'JP', ident: 'RJAA', label: '도쿄', code: 'NRT', country: '일본' },
+  { cc: 'TH', ident: 'VTBS', label: '방콕', code: 'BKK', country: '태국' },
+  { cc: 'AU', ident: 'YSSY', label: '시드니', code: 'SYD', country: '오스트레일리아' },
+  { cc: 'FR', ident: 'LFPG', label: '파리', code: 'CDG', country: '프랑스' },
+  { cc: 'US', ident: 'KJFK', label: '뉴욕', code: 'JFK', country: '미국' },
+  { cc: 'GB', ident: 'EGLL', label: '런던', code: 'LHR', country: '영국' },
 ];
 
 export default function App() {
@@ -108,6 +109,8 @@ export default function App() {
           }}
           popular={DEMOS.map((d) => ({
             label: d.label,
+            code: d.code,
+            country: d.country,
             run: async () => {
               await chooseCountry(d.cc);
               const a = (await loadCountry(d.cc)).find((x) => x.ident === d.ident);
@@ -145,8 +148,8 @@ export default function App() {
               보존되며 지구 곡률 보정은 다루지 않습니다. 태풍은 실제 기상이 아니라 원형 진입 금지 구역입니다.
             </p>
             <p>
-              <b>데이터·소리:</b> 공항 {meta?.totalAirports.toLocaleString() ?? '—'}곳 — {meta?.source ?? 'OurAirports'}. 국경 Natural Earth. 지구 위성 영상 NASA Blue Marble(퍼블릭 도메인). 하늘은 Preetham 대기 모델, 비행기·구름·음악은 코드로
-              직접 만든 오리지널입니다.
+              <b>데이터·소리:</b> 공항 {meta?.totalAirports.toLocaleString() ?? '—'}곳 — {meta?.source ?? 'OurAirports'}. 국경 Natural Earth. 지구 위성 영상 NASA Blue Marble(퍼블릭 도메인). 하늘은 Preetham 대기 모델, 비행기·공항·구름·음악은 코드로
+              직접 만든 오리지널이며, 항공편·운임은 학습용 가상 값입니다.
             </p>
             <button className="btn-main" onClick={() => setAboutOpen(false)}>
               닫기
