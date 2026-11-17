@@ -1,6 +1,6 @@
 {
   "name": "storm-detour-lab",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "태풍을 지나는 여행 — 1인칭 비행 속 최단 항로 수학 (A=(t,0) 기준)",
   "scripts": {
     "prepare-airports": "tsx scripts/prepare-airports.ts",

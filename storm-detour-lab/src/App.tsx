@@ -142,8 +142,8 @@ export default function App() {
               보존되며 지구 곡률 보정은 다루지 않습니다. 태풍은 실제 기상이 아니라 원형 진입 금지 구역입니다.
             </p>
             <p>
-              <b>데이터·소리:</b> 공항 {meta?.totalAirports.toLocaleString() ?? '—'}곳 — {meta?.source ?? 'OurAirports'}. 국경 Natural Earth. 지구 그림·구름·음악은 모두 코드로
-              직접 만든 것입니다.
+              <b>데이터·소리:</b> 공항 {meta?.totalAirports.toLocaleString() ?? '—'}곳 — {meta?.source ?? 'OurAirports'}. 국경 Natural Earth. 지구 위성 영상 NASA Blue Marble(퍼블릭 도메인). 하늘은 Preetham 대기 모델, 비행기·구름·음악은 코드로
+              직접 만든 오리지널입니다.
             </p>
             <button className="btn-main" onClick={() => setAboutOpen(false)}>
               닫기

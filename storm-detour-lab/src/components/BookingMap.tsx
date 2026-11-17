@@ -26,9 +26,9 @@ const STYLE: maplibregl.StyleSpecification = {
   version: 8,
   sources: { land: { type: 'geojson', data: landGeo } },
   layers: [
-    { id: 'bg', type: 'background', paint: { 'background-color': '#bfe3e4' } },
-    { id: 'land', type: 'fill', source: 'land', paint: { 'fill-color': '#f3eedf' } },
-    { id: 'border', type: 'line', source: 'land', paint: { 'line-color': '#d9cfb8', 'line-width': 0.6 } },
+    { id: 'bg', type: 'background', paint: { 'background-color': '#c9dde3' } },
+    { id: 'land', type: 'fill', source: 'land', paint: { 'fill-color': '#f4eee2' } },
+    { id: 'border', type: 'line', source: 'land', paint: { 'line-color': '#dfd3bd', 'line-width': 0.6 } },
   ],
 };
 
@@ -97,9 +97,9 @@ export function BookingMap(props: Props) {
         id: 'base',
         type: 'line',
         source: 'base',
-        paint: { 'line-color': ['case', ['get', 'blocked'], '#e07a5f', '#5b6f99'], 'line-width': 2, 'line-dasharray': [3, 2.5] },
+        paint: { 'line-color': ['case', ['get', 'blocked'], '#d8735a', '#5b6f99'], 'line-width': 2, 'line-dasharray': [3, 2.5] },
       });
-      map.addLayer({ id: 'route', type: 'line', source: 'route', layout: { 'line-cap': 'round' }, paint: { 'line-color': '#2a9d8f', 'line-width': 3.5 } });
+      map.addLayer({ id: 'route', type: 'line', source: 'route', layout: { 'line-cap': 'round' }, paint: { 'line-color': '#2e8f86', 'line-width': 3.5 } });
       map.addLayer({
         id: 'pts',
         type: 'circle',
@@ -215,7 +215,11 @@ export function BookingMap(props: Props) {
     const key = p.destination ? String(p.destination.id) : '';
     if (key && key !== fitted.current && trip) {
       fitted.current = key;
-      const all = [...trip.baseRoute, ...trip.stormBoundary];
+      // 태풍 경계의 경도를 항로와 같은 쪽(±360°)으로 맞춰야 날짜변경선 근처에서 화면이 세계 전체로 벌어지지 않는다
+      const routeMid = trip.baseRoute[Math.floor(trip.baseRoute.length / 2)].lon;
+      const stormMid = trip.stormBoundary.reduce((acc, q) => acc + q.lon, 0) / trip.stormBoundary.length;
+      const shift = Math.round((routeMid - stormMid) / 360) * 360;
+      const all = [...trip.baseRoute, ...trip.stormBoundary.map((q) => ({ lat: q.lat, lon: q.lon + shift }))];
       const lons = all.map((q) => q.lon);
       const lats = all.map((q) => q.lat);
       map.fitBounds(

@@ -137,9 +137,6 @@ export function Radar({ trip, distance, zoom, reveal, pos, heading }: Props) {
         <g transform={`translate(${X(pos.x)},${Y(pos.y)}) rotate(${ang})`}>
           <path d="M8 0 L-5 -5 L-2 0 L-5 5 Z" className="r-plane" />
         </g>
-        <text x={8} y={14} className="rl axis">
-          x축 = 기수 방향 (O → A)
-        </text>
       </g>
     </svg>
   );

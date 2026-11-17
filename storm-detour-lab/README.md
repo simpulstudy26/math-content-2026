@@ -1,4 +1,4 @@
-# 태풍을 지나는 여행 — 최단 항로 수학 비행 (v0.2)
+# 태풍을 지나는 여행 — 최단 항로 수학 비행 (v0.3)
 
 인천에서 고른 공항까지 1인칭으로 날아가며, 가상의 원형 태풍을 피하는 **최단 항로(접선 + 원호 + 접선)** 가
 기내 노트에 한 단계씩 계산되는 감상형 수학 여행 시뮬레이터입니다.
@@ -10,8 +10,9 @@
 
 1. **발권** — 국가 → 공항 검색(OurAirports 86,000여 곳), 지도에서 태풍 위치·반지름 배치.
    관통 조건 `r² − b² > 0`, `0 < a − h < a + h < t` 를 만족해야 탑승 버튼이 켜집니다.
-2. **비행 (약 4분, ×1·×2·×4)** — 파스텔 로우폴리 3D 1인칭 시점. 창밖 하늘은 오후에서 노을로 바뀌고,
-   접점 P에 가까워지면 시선이 태풍 쪽으로 돌아가며 원호를 따라 선회합니다. 화면을 끌어 둘러볼 수 있습니다.
+2. **비행 (약 4분, ×1·×2·×4)** — 조종사 어깨 너머로 1930년대풍 단발 프로펠러기(오리지널 디자인)가 보이는 숄더 샷.
+   위성 영상 지구, 물리 기반 하늘(Preetham), 부드러운 뭉게구름, 바다의 햇빛 반짝임. 오후에서 노을로 시간이 흐르고,
+   접점 P에서 기체가 기울며 태풍의 구름벽을 따라 원호로 선회합니다.
 3. **기내 노트** — 비행 시각에 맞춰 문서 11장의 ①~⑧ 계산이 이번 여행의 숫자로 적힙니다.
    계기판의 **레이더 = 계산 좌표평면**(x축 = 기수 방향)에 B₁, B₂, P, Q, R이 차례로 나타납니다.
 4. **도착 엽서** — 직선 t와 L_min 비교, 계산 요약, 코사인표 보간 오차.
@@ -35,7 +36,12 @@ src/math/
   cosTable.ts       0°~90° 1° 코사인표(소수 8자리)와 두 행을 잇는 일차함수 보간 (역삼각함수 없음)
   geoProjection.ts  WGS84 측지선 기반 방위정거리 투영 (GeographicLib)
   trip.ts           여행 1회 = 문제 1개: 지리 대응, 경로 샘플, 추천 태풍, 4분 시간 배분(단조 3차 보간)
-src/scene/          Three.js 1인칭 장면 — 직접 그린 파스텔 지구 텍스처, 하늘 셰이더, 로우폴리 구름·태풍
+src/scene/          Three.js 장면 — 3단 렌더링(하늘 → 세계 km → 비행기 m), 부동 원점
+  atmosphere.ts     Preetham 하늘 + 같은 식을 JS로 옮겨 연무·하늘빛·햇빛 색 계산
+  globe.ts          Blue Marble 위성 영상 + Natural Earth 육지 마스크, 바다 반사·반짝임, 대기 원근
+  cloudSprites.ts   잡음으로 만든 구름 퍼프 아틀라스, 공 모양 가짜 법선 조명, 먼 것부터 정렬
+  clouds.ts         항로 구름·태풍(눈벽·중심 구름덮개·나선 띠·바깥 구름벽) 배치
+  aircraft.ts       고전 단발기·조종사·머플러 (오리지널 모델, 그림자·하늘 반사)
 src/story/notes.ts  노트가 적히는 순서와 시각
 src/audio/          Web Audio로 만든 앰비언트 음악·엔진 소리·종소리 (외부 음원 없음)
 src/components/     Booking(발권), BookingMap, FlightView(조종석), Radar, NoteBody, Postcard
@@ -61,5 +67,6 @@ src/components/     Booking(발권), BookingMap, FlightView(조종석), Radar, N
 
 ## 데이터 출처
 
-공항 OurAirports (Public Domain) · 국경 Natural Earth (world-atlas) · 측지 GeographicLib ·
-지도 MapLibre GL JS · 3D three.js. 지구 그림·구름·음악은 코드로 직접 생성.
+공항 OurAirports (Public Domain) · 국경 Natural Earth (world-atlas) · 지구 영상 NASA Blue Marble (Public Domain,
+three-globe 예제 사본) · 측지 GeographicLib · 지도 MapLibre GL JS · 3D three.js (Sky: Preetham 모델).
+비행기·구름·음악은 코드로 직접 만든 오리지널.
